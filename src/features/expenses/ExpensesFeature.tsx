@@ -12,16 +12,36 @@ interface ExpensesFeatureProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  editingExpense?: Expense | null;
+  existingShares?: ExpenseShare[];
 }
 
 type SplitType = 'equal' | 'percentage' | 'shares' | 'custom';
+
+function inferSplitType(shares: ExpenseShare[], amount: number): SplitType {
+  if (shares.length === 0) return 'equal';
+
+  const shareAmounts = shares.map((share) => share.share_amount);
+  const allEqual = shareAmounts.every((value) => Math.abs(value - shareAmounts[0]) < 0.01);
+  if (allEqual) return 'equal';
+
+  const percentages = shareAmounts.map((value) => (value / amount) * 100);
+  const percentageSum = percentages.reduce((acc, value) => acc + value, 0);
+  if (Math.abs(percentageSum - 100) < 0.1) {
+    return 'percentage';
+  }
+
+  return 'custom';
+}
 
 export const ExpensesFeature: React.FC<ExpensesFeatureProps> = ({
   eventId,
   members,
   isOpen,
   onClose,
-  onSuccess
+  onSuccess,
+  editingExpense = null,
+  existingShares = []
 }) => {
   const { currentUser } = useAuthStore();
   const [description, setDescription] = useState('');
@@ -38,31 +58,63 @@ export const ExpensesFeature: React.FC<ExpensesFeatureProps> = ({
 
   const categorias = ['Alimentación', 'Transporte', 'Vivienda', 'Salud', 'Educación', 'Entretenimiento', 'Viajes', 'Otros'];
 
-  // Inicializar estados
+  // Inicializar estados al abrir el modal (crear o editar)
   useEffect(() => {
-    if (isOpen) {
-      if (currentUser) {
-        setPayerId(currentUser.id);
-      } else if (members.length > 0) {
-        setPayerId(members[0].user.id);
-      }
-      
+    if (!isOpen) return;
+
+    if (editingExpense) {
+      const detectedSplitType = inferSplitType(existingShares, editingExpense.amount);
       const initialParticipants: Record<string, boolean> = {};
       const initialValues: Record<string, string> = {};
-      members.forEach((m) => {
-        initialParticipants[m.user.id] = true;
-        initialValues[m.user.id] = '';
+
+      members.forEach((member) => {
+        initialParticipants[member.user.id] = false;
+        initialValues[member.user.id] = '';
       });
-      
+
+      existingShares.forEach((share) => {
+        initialParticipants[share.user_id] = true;
+        if (detectedSplitType === 'percentage') {
+          initialValues[share.user_id] = String(
+            Math.round((share.share_amount / editingExpense.amount) * 100)
+          );
+        } else if (detectedSplitType === 'custom') {
+          initialValues[share.user_id] = String(share.share_amount);
+        }
+      });
+
+      setDescription(editingExpense.description);
+      setAmountStr(String(editingExpense.amount));
+      setCategory(editingExpense.category);
+      setPayerId(editingExpense.user_id);
+      setSplitType(detectedSplitType);
       setParticipants(initialParticipants);
       setSplitValues(initialValues);
-      setDescription('');
-      setAmountStr('');
-      setCategory('Alimentación');
-      setSplitType('equal');
       setError('');
+      return;
     }
-  }, [isOpen, members, currentUser]);
+
+    if (currentUser) {
+      setPayerId(currentUser.id);
+    } else if (members.length > 0) {
+      setPayerId(members[0].user.id);
+    }
+
+    const initialParticipants: Record<string, boolean> = {};
+    const initialValues: Record<string, string> = {};
+    members.forEach((member) => {
+      initialParticipants[member.user.id] = true;
+      initialValues[member.user.id] = '';
+    });
+
+    setParticipants(initialParticipants);
+    setSplitValues(initialValues);
+    setDescription('');
+    setAmountStr('');
+    setCategory('Alimentación');
+    setSplitType('equal');
+    setError('');
+  }, [isOpen, members, currentUser, editingExpense, existingShares]);
 
   const toggleParticipant = (userId: string) => {
     setParticipants((prev) => ({
@@ -197,60 +249,108 @@ export const ExpensesFeature: React.FC<ExpensesFeatureProps> = ({
       });
     }
 
-    // Proceso de guardado en Dexie
-    const newExpenseId = generateUUID();
-    const newExpense: Expense = {
-      id: newExpenseId,
-      event_id: eventId,
-      user_id: payerId,
-      amount,
-      description: description.trim(),
-      category,
-      created_at: new Date().toISOString()
-    };
-
     try {
-      // 1. Guardar gasto principal
-      await db.expenses.add(newExpense);
-      await addToSyncQueue('expense', newExpenseId, 'INSERT', newExpense);
-
-      // 2. Guardar particiones
-      for (const sh of sharesToSave) {
-        const shareId = generateUUID();
-        const newShare: ExpenseShare = {
-          id: shareId,
-          expense_id: newExpenseId,
-          user_id: sh.user_id,
-          share_amount: sh.share_amount
+      if (editingExpense) {
+        const updatedExpense: Expense = {
+          ...editingExpense,
+          user_id: payerId,
+          amount,
+          description: description.trim(),
+          category
         };
-        await db.expense_shares.add(newShare);
-        await addToSyncQueue('expense_share', shareId, 'INSERT', newShare);
 
-        // 3. Crear notificación para los participantes (excepto el pagador)
-        if (sh.user_id !== payerId) {
-          const notificationId = generateUUID();
-          const payerUser = members.find((m) => m.user.id === payerId)?.user;
-          const notification = {
-            id: notificationId,
-            user_id: sh.user_id,
-            message: `${payerUser?.name || 'Un miembro'} registró un gasto de $${amount}: "${description}" (Tu parte: $${sh.share_amount})`,
-            read: 0,
-            created_at: new Date().toISOString()
+        const previousShares = await db.expense_shares
+          .where('expense_id')
+          .equals(editingExpense.id)
+          .toArray();
+
+        await db.transaction('rw', db.expenses, db.expense_shares, async () => {
+          await db.expenses.put(updatedExpense);
+          await db.expense_shares.where('expense_id').equals(editingExpense.id).delete();
+
+          for (const share of sharesToSave) {
+            const shareId = generateUUID();
+            const newShare: ExpenseShare = {
+              id: shareId,
+              expense_id: editingExpense.id,
+              user_id: share.user_id,
+              share_amount: share.share_amount
+            };
+            await db.expense_shares.add(newShare);
+          }
+        });
+
+        await addToSyncQueue('expense', editingExpense.id, 'UPDATE', updatedExpense);
+        for (const oldShare of previousShares) {
+          await addToSyncQueue('expense_share', oldShare.id, 'DELETE', { id: oldShare.id });
+        }
+        for (const share of sharesToSave) {
+          const persistedShare = await db.expense_shares
+            .where('[expense_id+user_id]')
+            .equals([editingExpense.id, share.user_id])
+            .first();
+          if (persistedShare) {
+            await addToSyncQueue('expense_share', persistedShare.id, 'INSERT', persistedShare);
+          }
+        }
+      } else {
+        const newExpenseId = generateUUID();
+        const newExpense: Expense = {
+          id: newExpenseId,
+          event_id: eventId,
+          user_id: payerId,
+          amount,
+          description: description.trim(),
+          category,
+          created_at: new Date().toISOString()
+        };
+
+        await db.expenses.add(newExpense);
+        await addToSyncQueue('expense', newExpenseId, 'INSERT', newExpense);
+
+        for (const share of sharesToSave) {
+          const shareId = generateUUID();
+          const newShare: ExpenseShare = {
+            id: shareId,
+            expense_id: newExpenseId,
+            user_id: share.user_id,
+            share_amount: share.share_amount
           };
-          await db.notifications.add(notification);
-          await addToSyncQueue('notification', notificationId, 'INSERT', notification);
+          await db.expense_shares.add(newShare);
+          await addToSyncQueue('expense_share', shareId, 'INSERT', newShare);
+
+          if (share.user_id !== payerId) {
+            const notificationId = generateUUID();
+            const payerUser = members.find((member) => member.user.id === payerId)?.user;
+            const notification = {
+              id: notificationId,
+              user_id: share.user_id,
+              message: `${payerUser?.name || 'Un miembro'} registró un gasto de $${amount}: "${description}" (Tu parte: $${share.share_amount})`,
+              read: 0,
+              created_at: new Date().toISOString()
+            };
+            await db.notifications.add(notification);
+            await addToSyncQueue('notification', notificationId, 'INSERT', notification);
+          }
         }
       }
 
       onSuccess();
       onClose();
-    } catch (err: any) {
-      setError('Error al registrar el gasto: ' + err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`Error al ${editingExpense ? 'actualizar' : 'registrar'} el gasto: ${message}`);
     }
   };
 
+  const isEditing = Boolean(editingExpense);
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Registrar Nuevo Gasto">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={isEditing ? 'Editar Gasto' : 'Registrar Nuevo Gasto'}
+    >
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '75vh', overflowY: 'auto', paddingRight: '4px' }}>
         <Input
           label="Descripción del Gasto"
@@ -407,7 +507,7 @@ export const ExpensesFeature: React.FC<ExpensesFeatureProps> = ({
             Cancelar
           </Button>
           <Button type="submit" icon={<DollarSign size={16} />}>
-            Guardar Gasto
+            {isEditing ? 'Actualizar Gasto' : 'Guardar Gasto'}
           </Button>
         </div>
       </form>

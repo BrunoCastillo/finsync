@@ -1,4 +1,4 @@
-import { db, type AppNotification, type Event, type Expense, type ExpenseShare, type Group, type GroupMember } from './db';
+import { db, type AppNotification, type Event, type Expense, type ExpenseShare, type Group, type GroupMember, type PersonalExpense } from './db';
 
 export const DEMO_GROUP_ID = 'group-viaje-playa-001122334455';
 export const DEMO_EVENT_ID = 'event-cartagena-001122334455';
@@ -13,10 +13,10 @@ const DEMO_USER_IDS = [
 
 const REMOTE_KEY = 'FinSync_MockRemoteDB';
 
-// Sembrar grupo, evento y gastos de demostración para onboarding rápido
+// Sembrar o actualizar datos demo de forma idempotente (put en lugar de add)
 export async function seedDemoData(): Promise<void> {
-  const existingGroups = await db.groups.count();
-  if (existingGroups > 0) {
+  const demoGroupExists = await db.groups.get(DEMO_GROUP_ID);
+  if (demoGroupExists) {
     return;
   }
 
@@ -106,15 +106,14 @@ export async function seedDemoData(): Promise<void> {
   ];
 
   await db.transaction('rw', [db.groups, db.group_members, db.events, db.expenses, db.expense_shares, db.notifications], async () => {
-    await db.groups.add(demoGroup);
-    await db.group_members.bulkAdd(demoMembers);
-    await db.events.add(demoEvent);
-    await db.expenses.bulkAdd(demoExpenses);
-    await db.expense_shares.bulkAdd(demoShares);
-    await db.notifications.bulkAdd(demoNotifications);
+    await db.groups.put(demoGroup);
+    await db.group_members.bulkPut(demoMembers);
+    await db.events.put(demoEvent);
+    await db.expenses.bulkPut(demoExpenses);
+    await db.expense_shares.bulkPut(demoShares);
+    await db.notifications.bulkPut(demoNotifications);
   });
 
-  // Replicar datos demo en el almacén remoto simulado (localStorage)
   const remoteRaw = localStorage.getItem(REMOTE_KEY);
   const remoteData = remoteRaw
     ? JSON.parse(remoteRaw)
@@ -146,6 +145,70 @@ export async function seedDemoData(): Promise<void> {
   remoteData.notifications = [
     ...remoteData.notifications.filter((n: AppNotification) => !n.id.startsWith('notif-demo-')),
     ...demoNotifications
+  ];
+
+  localStorage.setItem(REMOTE_KEY, JSON.stringify(remoteData));
+}
+
+// Sembrar movimientos personales demo para Bruno
+export async function seedPersonalDemoData(): Promise<void> {
+  const brunoId = DEMO_USER_IDS[0];
+  const existingCount = await db.personal_expenses.where('user_id').equals(brunoId).count();
+  if (existingCount > 0) return;
+
+  const now = new Date().toISOString();
+  const demoPersonal: PersonalExpense[] = [
+    {
+      id: 'personal-demo-super-001122334455',
+      user_id: brunoId,
+      amount: 45.5,
+      description: 'Supermercado semanal',
+      category: 'Alimentación',
+      type: 'expense',
+      created_at: now
+    },
+    {
+      id: 'personal-demo-freelance-001122334455',
+      user_id: brunoId,
+      amount: 350,
+      description: 'Freelance diseño',
+      category: 'Otros',
+      type: 'income',
+      created_at: now
+    },
+    {
+      id: 'personal-demo-bus-001122334455',
+      user_id: brunoId,
+      amount: 12,
+      description: 'Transporte urbano',
+      category: 'Transporte',
+      type: 'expense',
+      created_at: now
+    }
+  ];
+
+  await db.personal_expenses.bulkPut(demoPersonal);
+
+  const remoteRaw = localStorage.getItem(REMOTE_KEY);
+  const remoteData = remoteRaw
+    ? JSON.parse(remoteRaw)
+    : {
+        users: [],
+        groups: [],
+        group_members: [],
+        events: [],
+        expenses: [],
+        expense_shares: [],
+        settlements: [],
+        notifications: [],
+        personal_expenses: []
+      };
+
+  remoteData.personal_expenses = [
+    ...(remoteData.personal_expenses ?? []).filter(
+      (row: PersonalExpense) => !row.id.startsWith('personal-demo-')
+    ),
+    ...demoPersonal
   ];
 
   localStorage.setItem(REMOTE_KEY, JSON.stringify(remoteData));

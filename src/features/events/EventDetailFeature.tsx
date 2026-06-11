@@ -1,27 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, type Settlement } from '../../core/db';
+import { db, type Settlement, type Expense, type ExpenseShare } from '../../core/db';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { Card, Button, Badge } from '../../components/UI';
 import { ExpensesFeature } from '../expenses/ExpensesFeature';
 import { calculateBalances, calculateOptimalTransfers } from '../settlements/debtCalculator';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
-import { ChevronLeft, Plus, DollarSign, Wallet, RefreshCw, CheckCircle2, Lock, Unlock, CreditCard } from 'lucide-react';
+import { ChevronLeft, Plus, DollarSign, Wallet, RefreshCw, CheckCircle2, Lock, Unlock, CreditCard, Pencil, Trash2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export const EventDetailFeature: React.FC = () => {
   const { currentUser, allUsers } = useAuthStore();
-  const { selectedGroupId, selectedEventId, setView } = useUiStore();
+  const { selectedGroupId, selectedEventId, setView, openExpenseFormOnNavigate, clearExpenseFormIntent } = useUiStore();
   
   const [activeTab, setActiveTab] = useState<'expenses' | 'balances'>('expenses');
   const [isExpenseFormOpen, setIsExpenseFormOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editingShares, setEditingShares] = useState<ExpenseShare[]>([]);
 
   // Queries reactivas usando Dexie
   const event = useLiveQuery(async () => {
     if (!selectedEventId) return null;
     return db.events.get(selectedEventId);
   }, [selectedEventId]);
+
+  useEffect(() => {
+    if (openExpenseFormOnNavigate && event?.status === 'open') {
+      setIsExpenseFormOpen(true);
+      setActiveTab('expenses');
+      clearExpenseFormIntent();
+    }
+  }, [openExpenseFormOnNavigate, event, clearExpenseFormIntent]);
 
   const groupMembers = useLiveQuery(async () => {
     if (!selectedGroupId) return [];
@@ -109,7 +119,6 @@ export const EventDetailFeature: React.FC = () => {
     await addToSyncQueue('notification', notif1Id, 'INSERT', notif1);
   };
 
-  // Cambiar estado del evento (Cerrar / Reabrir)
   const handleToggleEventStatus = async () => {
     if (!event) return;
     const newStatus = event.status === 'open' ? 'closed' : 'open';
@@ -124,6 +133,37 @@ export const EventDetailFeature: React.FC = () => {
         spread: 100,
         origin: { y: 0.5 }
       });
+    }
+  };
+
+  const handleCloseExpenseForm = () => {
+    setIsExpenseFormOpen(false);
+    setEditingExpense(null);
+    setEditingShares([]);
+  };
+
+  const handleEditExpense = (expense: Expense, shares: ExpenseShare[]) => {
+    setEditingExpense(expense);
+    setEditingShares(shares);
+    setIsExpenseFormOpen(true);
+  };
+
+  const handleDeleteExpense = async (expense: Expense) => {
+    const confirmed = window.confirm(
+      `¿Eliminar el gasto "${expense.description}" por $${expense.amount.toFixed(2)}?`
+    );
+    if (!confirmed) return;
+
+    const shares = await db.expense_shares.where('expense_id').equals(expense.id).toArray();
+
+    await db.transaction('rw', db.expenses, db.expense_shares, async () => {
+      await db.expense_shares.where('expense_id').equals(expense.id).delete();
+      await db.expenses.delete(expense.id);
+    });
+
+    await addToSyncQueue('expense', expense.id, 'DELETE', { id: expense.id });
+    for (const share of shares) {
+      await addToSyncQueue('expense_share', share.id, 'DELETE', { id: share.id });
     }
   };
 
@@ -170,7 +210,14 @@ export const EventDetailFeature: React.FC = () => {
         <div style={{ display: 'flex', gap: '12px' }}>
           {isEventOpen ? (
             <>
-              <Button onClick={() => setIsExpenseFormOpen(true)} icon={<Plus size={16} />}>
+              <Button
+                onClick={() => {
+                  setEditingExpense(null);
+                  setEditingShares([]);
+                  setIsExpenseFormOpen(true);
+                }}
+                icon={<Plus size={16} />}
+              >
                 Registrar Gasto
               </Button>
               <Button variant="secondary" onClick={handleToggleEventStatus} icon={<Lock size={16} />}>
@@ -265,7 +312,14 @@ export const EventDetailFeature: React.FC = () => {
                 Registra un gasto para comenzar a dividir las cuentas.
               </p>
               {isEventOpen && (
-                <Button onClick={() => setIsExpenseFormOpen(true)} icon={<Plus size={16} />}>
+                <Button
+                  onClick={() => {
+                    setEditingExpense(null);
+                    setEditingShares([]);
+                    setIsExpenseFormOpen(true);
+                  }}
+                  icon={<Plus size={16} />}
+                >
                   Registrar Primer Gasto
                 </Button>
               )}
@@ -310,11 +364,31 @@ export const EventDetailFeature: React.FC = () => {
                           </p>
                         </div>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
+                      <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
                         <p style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
                           ${exp.amount.toFixed(2)}
                         </p>
-                        <Badge variant="purple" className="mt-16" style={{ fontSize: '10px' }}>{exp.category}</Badge>
+                        <Badge variant="purple" style={{ fontSize: '10px' }}>{exp.category}</Badge>
+                        {isEventOpen && (
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                            <Button
+                              variant="secondary"
+                              onClick={() => handleEditExpense(exp, shares)}
+                              icon={<Pencil size={14} />}
+                              style={{ padding: '6px 10px', fontSize: '12px' }}
+                            >
+                              Editar
+                            </Button>
+                            <Button
+                              variant="danger"
+                              onClick={() => handleDeleteExpense(exp)}
+                              icon={<Trash2 size={14} />}
+                              style={{ padding: '6px 10px', fontSize: '12px' }}
+                            >
+                              Eliminar
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -493,10 +567,14 @@ export const EventDetailFeature: React.FC = () => {
         eventId={event.id}
         members={groupMembers || []}
         isOpen={isExpenseFormOpen}
-        onClose={() => setIsExpenseFormOpen(false)}
+        onClose={handleCloseExpenseForm}
         onSuccess={() => {
           setActiveTab('expenses');
+          setEditingExpense(null);
+          setEditingShares([]);
         }}
+        editingExpense={editingExpense}
+        existingShares={editingShares}
       />
     </div>
   );

@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: finsync-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: PORT
+        value: 8000

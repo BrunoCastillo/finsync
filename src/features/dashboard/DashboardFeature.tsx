@@ -5,12 +5,43 @@ import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { useSyncStore, triggerSync } from '../../core/sync/syncEngine';
 import { Card, Button, Badge } from '../../components/UI';
-import { Wifi, WifiOff, RefreshCw, Landmark, ArrowUpRight, ArrowDownLeft, AlertCircle } from 'lucide-react';
+import { DEMO_GROUP_ID, DEMO_EVENT_ID } from '../../core/seedDemoData';
+import { Wifi, WifiOff, RefreshCw, Landmark, ArrowUpRight, ArrowDownLeft, AlertCircle, Plus, Wallet } from 'lucide-react';
 
 export const DashboardFeature: React.FC = () => {
   const { currentUser } = useAuthStore();
   const { setView } = useUiStore();
-  
+
+  const handleRegisterGroupExpense = async () => {
+    if (!currentUser) return;
+
+    const demoEvent = await db.events.get(DEMO_EVENT_ID);
+    const demoMembership = await db.group_members
+      .where('[group_id+user_id]')
+      .equals([DEMO_GROUP_ID, currentUser.id])
+      .first();
+
+    if (demoEvent?.status === 'open' && demoMembership) {
+      setView('event-detail', DEMO_GROUP_ID, DEMO_EVENT_ID, true);
+      return;
+    }
+
+    const memberships = await db.group_members.where('user_id').equals(currentUser.id).toArray();
+    for (const membership of memberships) {
+      const events = await db.events.where('group_id').equals(membership.group_id).toArray();
+      const openEvent = events.find((event) => event.status === 'open');
+      if (openEvent) {
+        setView('event-detail', membership.group_id, openEvent.id, true);
+        return;
+      }
+    }
+
+    setView('groups');
+  };
+
+  const handleRegisterPersonalExpense = () => {
+    setView('personal', null, null, false, true);
+  };
   // Sync state
   const { isOnline, isSyncing, pendingCount, syncHistory, setOnline } = useSyncStore();
 
@@ -22,6 +53,19 @@ export const DashboardFeature: React.FC = () => {
   const totalGroupsCount = useLiveQuery(async () => {
     if (!currentUser) return 0;
     return db.group_members.where('user_id').equals(currentUser.id).count();
+  }, [currentUser]);
+
+  const personalMonthStats = useLiveQuery(async () => {
+    if (!currentUser) return { expenses: 0, income: 0, balance: 0, count: 0 };
+    const rows = await db.personal_expenses.where('user_id').equals(currentUser.id).toArray();
+    const now = new Date();
+    const monthRows = rows.filter((row) => {
+      const date = new Date(row.created_at);
+      return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+    });
+    const expenses = monthRows.filter((row) => row.type === 'expense').reduce((acc, row) => acc + row.amount, 0);
+    const income = monthRows.filter((row) => row.type === 'income').reduce((acc, row) => acc + row.amount, 0);
+    return { expenses, income, balance: income - expenses, count: monthRows.length };
   }, [currentUser]);
 
   // Cargar todos los gastos donde participa el usuario actual para sacar estadísticas
@@ -102,14 +146,22 @@ export const DashboardFeature: React.FC = () => {
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
             Este es el resumen general de tu billetera y deudas grupales.
             {' '}
-            {(totalGroupsCount ?? 0) > 0 || (totalExpensesCount ?? 0) > 0
-              ? `${totalGroupsCount ?? 0} grupos · ${totalExpensesCount ?? 0} gastos registrados.`
-              : 'Crea un grupo o explora la demo precargada.'}
+            {(totalGroupsCount ?? 0) > 0 || (totalExpensesCount ?? 0) > 0 || (personalMonthStats?.count ?? 0) > 0
+              ? `${totalGroupsCount ?? 0} grupos · ${totalExpensesCount ?? 0} gastos grupales · ${personalMonthStats?.count ?? 0} movimientos personales este mes.`
+              : 'Crea un grupo o registra un gasto personal para empezar.'}
           </p>
         </div>
 
-        {/* Panel Simulador de Red (Muy visual) */}
-        <Card glass style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '16px', borderRadius: 'var(--radius-md)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+          <Button onClick={handleRegisterPersonalExpense} icon={<Wallet size={16} />}>
+            Gasto personal
+          </Button>
+          <Button variant="secondary" onClick={handleRegisterGroupExpense} icon={<Plus size={16} />}>
+            Gasto grupal
+          </Button>
+
+          {/* Panel Simulador de Red (Muy visual) */}
+          <Card glass style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '16px', borderRadius: 'var(--radius-md)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {isOnline ? (
               <Wifi size={18} style={{ color: 'var(--secondary)' }} />
@@ -135,10 +187,29 @@ export const DashboardFeature: React.FC = () => {
             {isOnline ? 'Desconectar' : 'Conectar'}
           </button>
         </Card>
+        </div>
       </div>
 
       {/* Grid de Métricas Principales */}
       <div className="grid-3 mb-24">
+        <Card style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--primary-light)', color: 'var(--primary)' }}>
+            <Wallet size={24} />
+          </div>
+          <div>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Balance personal (mes)</p>
+            <p
+              style={{
+                fontSize: '24px',
+                fontWeight: 700,
+                color: (personalMonthStats?.balance ?? 0) >= 0 ? 'var(--secondary)' : 'var(--danger)'
+              }}
+            >
+              {(personalMonthStats?.balance ?? 0) >= 0 ? '+' : ''}${(personalMonthStats?.balance ?? 0).toFixed(2)}
+            </p>
+          </div>
+        </Card>
+
         <Card style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--secondary-light)', color: 'var(--secondary)' }}>
             <ArrowUpRight size={24} />
@@ -270,6 +341,9 @@ export const DashboardFeature: React.FC = () => {
           <Card style={{ padding: '24px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '16px' }}>Acciones Rápidas</h2>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+              <Button onClick={() => setView('personal')} icon={<Wallet size={16} />}>
+                Mis gastos personales
+              </Button>
               <Button onClick={() => setView('groups')} icon={<Landmark size={16} />}>
                 Gestionar Grupos
               </Button>
@@ -308,7 +382,7 @@ export const DashboardFeature: React.FC = () => {
               >
                 <AlertCircle size={20} style={{ color: 'var(--warning)', flexShrink: 0 }} />
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Hay cambios locales esperando a ser subidos a la nube. Se enviarán automáticamente al reconectar.
+                  Hay cambios locales esperando a ser subidos a la nube. Se enviarán y descargarán automáticamente al reconectar.
                 </p>
               </div>
             )}
@@ -317,11 +391,11 @@ export const DashboardFeature: React.FC = () => {
               <Button
                 variant="primary"
                 onClick={triggerSync}
-                disabled={!isOnline || isSyncing || pendingCount === 0}
+                disabled={!isOnline || isSyncing}
                 icon={<RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />}
                 style={{ width: '100%', padding: '10px 14px', fontSize: '13px' }}
               >
-                {isSyncing ? 'Sincronizando...' : 'Forzar Sincronización'}
+                {isSyncing ? 'Sincronizando...' : pendingCount > 0 ? 'Sincronizar ahora' : 'Descargar cambios'}
               </Button>
             </div>
 

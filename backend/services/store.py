@@ -20,6 +20,7 @@ ENTITY_TABLE_MAP: dict[str, str] = {
     "expense_share": "expense_shares",
     "settlement": "settlements",
     "notification": "notifications",
+    "personal_expense": "personal_expenses",
 }
 
 DEFAULT_STORE: dict[str, list[dict[str, Any]]] = {
@@ -31,6 +32,7 @@ DEFAULT_STORE: dict[str, list[dict[str, Any]]] = {
     "expense_shares": [],
     "settlements": [],
     "notifications": [],
+    "personal_expenses": [],
 }
 
 
@@ -49,7 +51,11 @@ def _ensure_store_file() -> None:
 
 def load_store() -> dict[str, list[dict[str, Any]]]:
     _ensure_store_file()
-    return json.loads(STORE_PATH.read_text(encoding="utf-8"))
+    store = json.loads(STORE_PATH.read_text(encoding="utf-8"))
+    for key, default_rows in DEFAULT_STORE.items():
+        if key not in store:
+            store[key] = list(default_rows)
+    return store
 
 
 def save_store(store: dict[str, list[dict[str, Any]]]) -> None:

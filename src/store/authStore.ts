@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { db, type User } from '../core/db';
 import { addToSyncQueue, generateUUID } from '../core/sync/syncEngine';
-import { seedDemoData } from '../core/seedDemoData';
+import { seedDemoData, seedPersonalDemoData } from '../core/seedDemoData';
 
 interface AuthStore {
   currentUser: User | null;
@@ -64,37 +64,37 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   seedMockUsers: async () => {
     set({ isLoading: true });
     try {
-      const count = await db.users.count();
-      if (count === 0) {
-        // Sembrar usuarios iniciales
-        for (const u of DEFAULT_USERS) {
-          const userObj: User = {
-            id: u.id,
-            name: u.name,
-            email: u.email,
-            avatar: u.avatar,
-            created_at: new Date().toISOString()
-          };
-          await db.users.add(userObj);
-          // Omitimos encolar la sincronización de las semillas para mantener limpia la demo inicial,
-          // o las insertamos en el mock remoto de una vez.
-        }
+      // Sembrar usuarios demo de forma idempotente
+      for (const u of DEFAULT_USERS) {
+        const existing = await db.users.get(u.id);
+        const userObj: User = {
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          avatar: u.avatar,
+          created_at: existing?.created_at ?? new Date().toISOString()
+        };
+        await db.users.put(userObj);
+      }
 
-        // Sembrar en el mock remoto de una vez para consistencia
-        const remoteKey = 'FinSync_MockRemoteDB';
-        const remoteData = localStorage.getItem(remoteKey) ? JSON.parse(localStorage.getItem(remoteKey)!) : null;
-        if (!remoteData || remoteData.users.length === 0) {
-          const newRemoteData = remoteData || {
-            users: [], groups: [], group_members: [], events: [], expenses: [], expense_shares: [], settlements: [], notifications: []
-          };
-          newRemoteData.users = DEFAULT_USERS.map(u => ({
-            id: u.id, name: u.name, email: u.email, avatar: u.avatar, created_at: new Date().toISOString()
-          }));
-          localStorage.setItem(remoteKey, JSON.stringify(newRemoteData));
-        }
+      const remoteKey = 'FinSync_MockRemoteDB';
+      const remoteData = localStorage.getItem(remoteKey) ? JSON.parse(localStorage.getItem(remoteKey)!) : null;
+      if (!remoteData || remoteData.users.length === 0) {
+        const newRemoteData = remoteData || {
+          users: [], groups: [], group_members: [], events: [], expenses: [], expense_shares: [], settlements: [], notifications: []
+        };
+        newRemoteData.users = DEFAULT_USERS.map((u) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          avatar: u.avatar,
+          created_at: new Date().toISOString()
+        }));
+        localStorage.setItem(remoteKey, JSON.stringify(newRemoteData));
       }
 
       await seedDemoData();
+      await seedPersonalDemoData();
       await get().refreshUsers();
 
       // Cargar sesión persistida

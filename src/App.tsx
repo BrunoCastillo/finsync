@@ -7,8 +7,9 @@ import { GroupsFeature } from './features/groups/GroupsFeature';
 import { EventDetailFeature } from './features/events/EventDetailFeature';
 import { NotificationsFeature } from './features/notifications/NotificationsFeature';
 import { AuthFeature } from './features/auth/AuthFeature';
+import { PersonalExpensesFeature } from './features/personal/PersonalExpensesFeature';
 import { Badge } from './components/UI';
-import { LayoutDashboard, Users, Bell, User } from 'lucide-react';
+import { LayoutDashboard, Users, Bell, User, Wallet } from 'lucide-react';
 
 const App: React.FC = () => {
   const { currentUser, seedMockUsers, isLoading } = useAuthStore();
@@ -63,6 +64,8 @@ const App: React.FC = () => {
     switch (activeView) {
       case 'dashboard':
         return <DashboardFeature />;
+      case 'personal':
+        return <PersonalExpensesFeature />;
       case 'groups':
       case 'group-detail':
         return <GroupsFeature />;
@@ -97,6 +100,16 @@ const App: React.FC = () => {
                   >
                     <LayoutDashboard size={18} />
                     <span>Dashboard</span>
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => setView('personal')}
+                    className={`nav-item ${activeView === 'personal' ? 'active' : ''}`}
+                    style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
+                  >
+                    <Wallet size={18} />
+                    <span>Personal</span>
                   </button>
                 </li>
                 <li>
@@ -167,6 +180,13 @@ const App: React.FC = () => {
             >
               <LayoutDashboard size={20} />
               <span>Inicio</span>
+            </button>
+            <button
+              onClick={() => setView('personal')}
+              className={`mobile-nav-item ${activeView === 'personal' ? 'active' : ''}`}
+            >
+              <Wallet size={20} />
+              <span>Personal</span>
             </button>
             <button
               onClick={() => setView('groups')}

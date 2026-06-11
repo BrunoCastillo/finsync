@@ -1,25 +1,40 @@
 import { create } from 'zustand';
 
-export type ActiveView = 'dashboard' | 'groups' | 'group-detail' | 'event-detail' | 'notifications' | 'profile';
+export type ActiveView = 'dashboard' | 'personal' | 'groups' | 'group-detail' | 'event-detail' | 'notifications' | 'profile';
 
 interface UiStore {
   activeView: ActiveView;
   selectedGroupId: string | null;
   selectedEventId: string | null;
-  setView: (view: ActiveView, groupId?: string | null, eventId?: string | null) => void;
+  openExpenseFormOnNavigate: boolean;
+  openPersonalFormOnNavigate: boolean;
+  setView: (
+    view: ActiveView,
+    groupId?: string | null,
+    eventId?: string | null,
+    openExpenseForm?: boolean,
+    openPersonalForm?: boolean
+  ) => void;
+  clearExpenseFormIntent: () => void;
+  clearPersonalFormIntent: () => void;
 }
 
 export const useUiStore = create<UiStore>((set) => ({
   activeView: 'dashboard',
   selectedGroupId: null,
   selectedEventId: null,
-  setView: (view, groupId = null, eventId = null) => {
+  openExpenseFormOnNavigate: false,
+  openPersonalFormOnNavigate: false,
+  setView: (view, groupId = null, eventId = null, openExpenseForm = false, openPersonalForm = false) => {
     set({
       activeView: view,
-      selectedGroupId: groupId !== undefined ? groupId : null,
-      selectedEventId: eventId !== undefined ? eventId : null
+      selectedGroupId: groupId,
+      selectedEventId: eventId,
+      openExpenseFormOnNavigate: openExpenseForm,
+      openPersonalFormOnNavigate: openPersonalForm
     });
-    // Scroll a la parte superior de la página en la transición
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
+  },
+  clearExpenseFormIntent: () => set({ openExpenseFormOnNavigate: false }),
+  clearPersonalFormIntent: () => set({ openPersonalFormOnNavigate: false })
 }));

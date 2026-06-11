@@ -168,6 +168,7 @@ export const GroupsFeature: React.FC = () => {
 
     setEventName('');
     setIsCreateEventOpen(false);
+    setView('event-detail', selectedGroupId, newEventId, true);
   };
 
   // VISTA 1: Lista de Grupos
@@ -254,7 +255,18 @@ export const GroupsFeature: React.FC = () => {
   }
 
   // VISTA 2: Detalle de Grupo
-  if (activeView === 'group-detail' && activeGroup) {
+  if (activeView === 'group-detail') {
+    if (!activeGroup) {
+      return (
+        <div className="animate-fade-in">
+          <Button variant="secondary" onClick={() => setView('groups')} icon={<ChevronLeft size={16} />}>
+            Volver a Grupos
+          </Button>
+          <p style={{ marginTop: '16px', color: 'var(--text-secondary)' }}>Cargando grupo...</p>
+        </div>
+      );
+    }
+
     return (
       <div className="animate-fade-in">
         <div style={{ marginBottom: '24px' }}>

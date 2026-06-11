@@ -1,7 +1,16 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers.sync_router import router as sync_router
+
+allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "*")
+allowed_origins = (
+    ["*"]
+    if allowed_origins_raw.strip() == "*"
+    else [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
+)
 
 app = FastAPI(
     title="FinSync API",
@@ -11,8 +20,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=allowed_origins,
+    allow_credentials=allowed_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

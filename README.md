@@ -69,3 +69,45 @@ public/          # Assets PWA
 | `npm run build` | Compilación TypeScript + Vite |
 | `npm run lint` | ESLint |
 | `npm run icons` | Genera iconos PNG PWA |
+
+## Despliegue a producción
+
+### Arquitectura recomendada
+
+| Componente | Plataforma | URL ejemplo |
+|------------|------------|-------------|
+| Frontend PWA | [Vercel](https://vercel.com) | `https://finsync.vercel.app` |
+| API FastAPI | [Render](https://render.com) | `https://finsync-api.onrender.com` |
+
+### 1. Backend (Render)
+
+1. Conecta el repo `BrunoCastillo/finsync` en Render → **New Blueprint**
+2. Render detectará `render.yaml` y creará `finsync-api`
+3. Variable de entorno:
+   - `ALLOWED_ORIGINS=https://tu-frontend.vercel.app`
+4. Anota la URL pública del servicio (ej. `https://finsync-api.onrender.com`)
+
+### 2. Frontend (Vercel)
+
+1. Importa el repo en Vercel → framework **Vite**
+2. Variable de entorno de build:
+   - `VITE_API_URL=https://finsync-api.onrender.com`
+3. Deploy automático en cada push a `master`
+
+### Deploy manual rápido
+
+```bash
+# Frontend
+npm run build
+npx vercel --prod
+
+# Backend (requiere Docker + cuenta Render, o local):
+cd backend
+docker build -t finsync-api .
+```
+
+### Verificación post-deploy
+
+- Frontend: abre `/` y comprueba que carga la PWA
+- API: `GET https://<api-url>/health` → `{ "status": "ok" }`
+- Sync: Dashboard → **Descargar cambios** (debe usar la API, no solo localStorage)

@@ -32,3 +32,5 @@ backend/data/store.json
 *.njsproj
 *.sln
 *.sw?
+
+.vercel

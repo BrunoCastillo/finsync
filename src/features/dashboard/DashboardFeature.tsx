@@ -6,7 +6,8 @@ import { useUiStore } from '../../store/uiStore';
 import { useSyncStore, triggerSync } from '../../core/sync/syncEngine';
 import { Card, Button, Badge } from '../../components/UI';
 import { DEMO_GROUP_ID, DEMO_EVENT_ID } from '../../core/seedDemoData';
-import { Wifi, WifiOff, RefreshCw, Landmark, ArrowUpRight, ArrowDownLeft, AlertCircle, Plus, Wallet } from 'lucide-react';
+import { getCurrentMonthKey, getMonthlyBudget } from '../../core/personal/budget';
+import { Wifi, WifiOff, RefreshCw, Landmark, ArrowUpRight, ArrowDownLeft, AlertCircle, Plus, Wallet, Target } from 'lucide-react';
 
 export const DashboardFeature: React.FC = () => {
   const { currentUser } = useAuthStore();
@@ -84,6 +85,11 @@ export const DashboardFeature: React.FC = () => {
     return { expenses, income, balance: income - expenses, count: monthRows.length };
   }, [currentUser]);
 
+  const personalBudget = useLiveQuery(async () => {
+    if (!currentUser) return undefined;
+    return getMonthlyBudget(currentUser.id, getCurrentMonthKey());
+  }, [currentUser]);
+
   // Cargar gastos grupales solo de eventos donde participa el usuario
   const expensesStats = useLiveQuery(async () => {
     if (!currentUser) return { totalPaid: 0, totalShare: 0, byCategory: {} as Record<string, number> };
@@ -124,6 +130,9 @@ export const DashboardFeature: React.FC = () => {
   const totalPaid = expensesStats?.totalPaid || 0;
   const totalShare = expensesStats?.totalShare || 0;
   const netBalance = totalPaid - totalShare;
+  const budgetLimit = personalBudget?.limit_amount ?? 0;
+  const monthPersonalExpenses = personalMonthStats?.expenses ?? 0;
+  const isOverPersonalBudget = budgetLimit > 0 && monthPersonalExpenses > budgetLimit;
 
   // Preparar datos para el gráfico SVG de Categorías
   const categoryData = expensesStats?.byCategory || {};
@@ -207,6 +216,27 @@ export const DashboardFeature: React.FC = () => {
         </Card>
         </div>
       </div>
+
+      {isOverPersonalBudget && (
+        <Card
+          style={{
+            padding: '16px 20px',
+            marginBottom: '24px',
+            borderLeft: '4px solid var(--danger)',
+            backgroundColor: 'rgba(244,63,94,0.06)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Target size={20} style={{ color: 'var(--danger)' }} />
+            <div>
+              <p style={{ fontWeight: 700, color: 'var(--danger)' }}>Presupuesto personal excedido</p>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                Llevas ${monthPersonalExpenses.toFixed(2)} de ${budgetLimit.toFixed(2)} este mes.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Grid de Métricas Principales */}
       <div className="grid-3 mb-24">

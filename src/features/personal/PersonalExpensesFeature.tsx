@@ -6,7 +6,8 @@ import { useUiStore } from '../../store/uiStore';
 import { Card, Button, Input, Modal, Badge } from '../../components/UI';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
 import { validateAmount } from '../../core/validation';
-import { Plus, Pencil, Trash2, DollarSign, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { getCurrentMonthKey, getMonthlyBudget, saveMonthlyBudget } from '../../core/personal/budget';
+import { Plus, Pencil, Trash2, DollarSign, TrendingDown, TrendingUp, Wallet, Target } from 'lucide-react';
 
 const CATEGORIES = ['Alimentación', 'Transporte', 'Vivienda', 'Salud', 'Educación', 'Entretenimiento', 'Viajes', 'Otros'];
 
@@ -37,6 +38,15 @@ export const PersonalExpensesFeature: React.FC = () => {
   const [category, setCategory] = useState('Alimentación');
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [error, setError] = useState('');
+  const [budgetInput, setBudgetInput] = useState('');
+  const [budgetMessage, setBudgetMessage] = useState('');
+
+  const monthKey = getCurrentMonthKey();
+
+  const monthlyBudget = useLiveQuery(async () => {
+    if (!currentUser) return undefined;
+    return getMonthlyBudget(currentUser.id, monthKey);
+  }, [currentUser, monthKey]);
 
   const personalExpenses = useLiveQuery(async () => {
     if (!currentUser) return [];
@@ -67,6 +77,12 @@ export const PersonalExpensesFeature: React.FC = () => {
       clearPersonalFormIntent();
     }
   }, [openPersonalFormOnNavigate, clearPersonalFormIntent]);
+
+  useEffect(() => {
+    if (monthlyBudget) {
+      setBudgetInput(String(monthlyBudget.limit_amount));
+    }
+  }, [monthlyBudget]);
 
   const resetForm = () => {
     setDescription('');
@@ -105,6 +121,22 @@ export const PersonalExpensesFeature: React.FC = () => {
 
     await db.personal_expenses.delete(expense.id);
     await addToSyncQueue('personal_expense', expense.id, 'DELETE', { id: expense.id });
+  };
+
+  const handleSaveBudget = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBudgetMessage('');
+    if (!currentUser) return;
+
+    const limitAmount = parseFloat(budgetInput);
+    const amountValidation = validateAmount({ amount: limitAmount });
+    if (!amountValidation.is_valid) {
+      setBudgetMessage(amountValidation.error);
+      return;
+    }
+
+    await saveMonthlyBudget({ userId: currentUser.id, limitAmount });
+    setBudgetMessage('Presupuesto mensual guardado.');
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -173,6 +205,9 @@ export const PersonalExpensesFeature: React.FC = () => {
   const monthExpenses = monthStats?.expenses ?? 0;
   const monthIncome = monthStats?.income ?? 0;
   const monthBalance = monthStats?.balance ?? 0;
+  const budgetLimit = monthlyBudget?.limit_amount ?? 0;
+  const budgetUsedPct = budgetLimit > 0 ? Math.min((monthExpenses / budgetLimit) * 100, 999) : 0;
+  const isOverBudget = budgetLimit > 0 && monthExpenses > budgetLimit;
 
   return (
     <div className="animate-fade-in">
@@ -187,6 +222,60 @@ export const PersonalExpensesFeature: React.FC = () => {
           Nuevo movimiento
         </Button>
       </div>
+
+      <Card glass style={{ padding: '20px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '16px', alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: '220px' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Target size={18} />
+              Presupuesto mensual
+            </h2>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+              Define cuánto planeas gastar este mes ({monthKey}).
+            </p>
+            {budgetLimit > 0 && (
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
+                  <span>Gastado: ${monthExpenses.toFixed(2)}</span>
+                  <span>Límite: ${budgetLimit.toFixed(2)}</span>
+                </div>
+                <div style={{ height: '8px', borderRadius: '999px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${Math.min(budgetUsedPct, 100)}%`,
+                      height: '100%',
+                      background: isOverBudget ? 'var(--danger)' : budgetUsedPct > 80 ? 'var(--warning)' : 'var(--secondary)'
+                    }}
+                  />
+                </div>
+                {isOverBudget && (
+                  <p style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '8px', fontWeight: 600 }}>
+                    Superaste tu presupuesto por ${(monthExpenses - budgetLimit).toFixed(2)}.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+          <form onSubmit={handleSaveBudget} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ width: '140px' }}>
+              <Input
+                label="Límite ($)"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={budgetInput}
+                onChange={(event) => setBudgetInput(event.target.value)}
+              />
+            </div>
+            <Button type="submit" variant="secondary" style={{ marginBottom: '2px' }}>
+              Guardar
+            </Button>
+          </form>
+        </div>
+        {budgetMessage && (
+          <p style={{ fontSize: '12px', color: 'var(--secondary)', marginTop: '10px' }}>{budgetMessage}</p>
+        )}
+      </Card>
 
       <div className="grid-3 mb-24">
         <Card style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>

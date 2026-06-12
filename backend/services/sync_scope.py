@@ -59,6 +59,9 @@ def filter_store_for_user(store: dict[str, list[dict[str, Any]]], user_id: str) 
         "personal_expenses": [
             row for row in store["personal_expenses"] if str(row.get("user_id")) == user_id
         ],
+        "personal_budgets": [
+            row for row in store["personal_budgets"] if str(row.get("user_id")) == user_id
+        ],
     }
 
 
@@ -100,16 +103,28 @@ def can_apply_sync_item(user_id: str, item: SyncPushRequest) -> bool:
     if item.entity_type == "personal_expense":
         return str(payload.get("user_id")) == user_id
 
+    if item.entity_type == "personal_budget":
+        return str(payload.get("user_id")) == user_id
+
     if item.entity_type == "notification":
         return str(payload.get("user_id")) == user_id
 
     if item.entity_type == "group":
+        group_id = item.entity_id
         if item.action == "INSERT":
             return str(payload.get("created_by")) == user_id
-        group_id = item.entity_id
+        if item.action == "DELETE":
+            return str(group_id) in scope["group_ids"] and _is_group_admin(store, group_id, user_id)
         return str(group_id) in scope["group_ids"] and _is_group_admin(store, group_id, user_id)
 
     if item.entity_type == "group_member":
+        if item.action == "DELETE":
+            existing = next((row for row in store["group_members"] if row.get("id") == item.entity_id), None)
+            if existing and str(existing.get("user_id")) == user_id:
+                return True
+            group_id = str(existing.get("group_id")) if existing else str(payload.get("group_id", ""))
+            return _is_group_admin(store, group_id, user_id)
+
         group_id = str(payload.get("group_id"))
         member_user_id = str(payload.get("user_id"))
         if item.action == "INSERT" and member_user_id == user_id:
@@ -117,6 +132,10 @@ def can_apply_sync_item(user_id: str, item: SyncPushRequest) -> bool:
         return _is_group_admin(store, group_id, user_id)
 
     if item.entity_type == "event":
+        if item.action == "DELETE":
+            group_id = _get_event_group_id(store, item.entity_id)
+            return group_id is not None and _is_group_admin(store, group_id, user_id)
+
         group_id = str(payload.get("group_id"))
         if item.action == "INSERT":
             return _user_in_group(store, group_id, user_id)

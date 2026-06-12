@@ -21,6 +21,7 @@ ENTITY_TABLE_MAP: dict[str, str] = {
     "settlement": "settlements",
     "notification": "notifications",
     "personal_expense": "personal_expenses",
+    "personal_budget": "personal_budgets",
 }
 
 DEFAULT_STORE: dict[str, list[dict[str, Any]]] = {
@@ -33,6 +34,7 @@ DEFAULT_STORE: dict[str, list[dict[str, Any]]] = {
     "settlements": [],
     "notifications": [],
     "personal_expenses": [],
+    "personal_budgets": [],
 }
 
 

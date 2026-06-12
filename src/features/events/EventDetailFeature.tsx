@@ -7,6 +7,7 @@ import { Card, Button, Badge } from '../../components/UI';
 import { ExpensesFeature } from '../expenses/ExpensesFeature';
 import { calculateBalances, calculateOptimalTransfers } from '../settlements/debtCalculator';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
+import { deleteEventCascade } from '../../core/groups/groupCascade';
 import { ChevronLeft, Plus, DollarSign, Wallet, RefreshCw, CheckCircle2, Lock, Unlock, CreditCard, Pencil, Trash2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -184,6 +185,19 @@ export const EventDetailFeature: React.FC = () => {
   }
 
   const isEventOpen = event.status === 'open';
+  const isGroupAdmin = groupMembers?.some(
+    (member) => member.user.id === currentUser?.id && member.role === 'admin'
+  );
+
+  const handleDeleteEvent = async () => {
+    if (!isGroupAdmin || !selectedEventId) return;
+    const confirmed = window.confirm(
+      `¿Eliminar el evento "${event.name}" y todos sus gastos? Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+    await deleteEventCascade(selectedEventId);
+    setView('group-detail', selectedGroupId);
+  };
 
   return (
     <div className="animate-fade-in">
@@ -227,6 +241,11 @@ export const EventDetailFeature: React.FC = () => {
           ) : (
             <Button variant="secondary" onClick={handleToggleEventStatus} icon={<Unlock size={16} />}>
               Reabrir Evento
+            </Button>
+          )}
+          {isGroupAdmin && (
+            <Button variant="danger" onClick={handleDeleteEvent} icon={<Trash2 size={16} />}>
+              Eliminar Evento
             </Button>
           )}
         </div>

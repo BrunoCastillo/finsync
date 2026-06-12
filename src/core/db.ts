@@ -68,9 +68,17 @@ export interface PersonalExpense {
   created_at: string;
 }
 
+export interface PersonalBudget {
+  id: string;
+  user_id: string;
+  month_key: string;
+  limit_amount: number;
+  updated_at: string;
+}
+
 export interface SyncQueueItem {
   id: string;
-  entity_type: 'user' | 'group' | 'group_member' | 'event' | 'expense' | 'expense_share' | 'settlement' | 'notification' | 'personal_expense';
+  entity_type: 'user' | 'group' | 'group_member' | 'event' | 'expense' | 'expense_share' | 'settlement' | 'notification' | 'personal_expense' | 'personal_budget';
   entity_id: string;
   action: 'INSERT' | 'UPDATE' | 'DELETE';
   payload: string; // JSON string
@@ -97,6 +105,7 @@ class FinSyncDatabase extends Dexie {
   sync_queue!: Table<SyncQueueItem>;
   notifications!: Table<AppNotification>;
   personal_expenses!: Table<PersonalExpense>;
+  personal_budgets!: Table<PersonalBudget>;
 
   constructor() {
     super('FinSyncDatabase');
@@ -134,6 +143,19 @@ class FinSyncDatabase extends Dexie {
       sync_queue: 'id, entity_type, entity_id, status, created_at',
       notifications: 'id, user_id, read, created_at',
       personal_expenses: 'id, user_id, category, type, created_at'
+    });
+    this.version(4).stores({
+      users: 'id, email, name, created_at',
+      groups: 'id, name, created_by, invite_code',
+      group_members: 'id, group_id, user_id, [group_id+user_id]',
+      events: 'id, group_id, name, status',
+      expenses: 'id, event_id, user_id, category, created_at',
+      expense_shares: 'id, expense_id, user_id, [expense_id+user_id]',
+      settlements: 'id, event_id, from_user, to_user, [event_id+from_user+to_user]',
+      sync_queue: 'id, entity_type, entity_id, status, created_at',
+      notifications: 'id, user_id, read, created_at',
+      personal_expenses: 'id, user_id, category, type, created_at',
+      personal_budgets: 'id, user_id, month_key, [user_id+month_key]'
     });
   }
 }

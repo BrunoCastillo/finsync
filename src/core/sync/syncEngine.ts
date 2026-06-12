@@ -55,7 +55,8 @@ const ENTITY_TABLE_MAP: Record<SyncQueueItem['entity_type'], string> = {
   expense_share: 'expense_shares',
   settlement: 'settlements',
   notification: 'notifications',
-  personal_expense: 'personal_expenses'
+  personal_expense: 'personal_expenses',
+  personal_budget: 'personal_budgets'
 };
 
 const MOCK_REMOTE_KEY = 'FinSync_MockRemoteDB';
@@ -70,6 +71,7 @@ interface MockRemoteDB {
   settlements: Record<string, unknown>[];
   notifications: Record<string, unknown>[];
   personal_expenses: Record<string, unknown>[];
+  personal_budgets: Record<string, unknown>[];
 }
 
 type RemoteRow = Record<string, unknown> & { id: string };
@@ -83,7 +85,8 @@ const EMPTY_MOCK_REMOTE: MockRemoteDB = {
   expense_shares: [],
   settlements: [],
   notifications: [],
-  personal_expenses: []
+  personal_expenses: [],
+  personal_budgets: []
 };
 
 const PULL_MERGE_ORDER: Array<{
@@ -99,7 +102,8 @@ const PULL_MERGE_ORDER: Array<{
   { entityType: 'expense_share', remoteKey: 'expense_shares', table: db.expense_shares },
   { entityType: 'settlement', remoteKey: 'settlements', table: db.settlements },
   { entityType: 'notification', remoteKey: 'notifications', table: db.notifications },
-  { entityType: 'personal_expense', remoteKey: 'personal_expenses', table: db.personal_expenses }
+  { entityType: 'personal_expense', remoteKey: 'personal_expenses', table: db.personal_expenses },
+  { entityType: 'personal_budget', remoteKey: 'personal_budgets', table: db.personal_budgets }
 ];
 
 function getMockRemoteDB(): MockRemoteDB {
@@ -109,7 +113,8 @@ function getMockRemoteDB(): MockRemoteDB {
   return {
     ...EMPTY_MOCK_REMOTE,
     ...parsed,
-    personal_expenses: parsed.personal_expenses ?? []
+    personal_expenses: parsed.personal_expenses ?? [],
+    personal_budgets: parsed.personal_budgets ?? []
   };
 }
 
@@ -201,7 +206,8 @@ async function fetchRemoteStore(): Promise<{ store: MockRemoteDB; source: 'api' 
         store: {
           ...EMPTY_MOCK_REMOTE,
           ...data,
-          personal_expenses: data.personal_expenses ?? []
+          personal_expenses: data.personal_expenses ?? [],
+          personal_budgets: data.personal_budgets ?? []
         },
         source: 'api'
       };

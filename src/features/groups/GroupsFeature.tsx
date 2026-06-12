@@ -6,8 +6,9 @@ import { useUiStore } from '../../store/uiStore';
 import { Card, Button, Input, Modal, Badge } from '../../components/UI';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
 import { joinGroupByInviteCode } from '../../core/groups/joinGroup';
+import { deleteEventCascade, deleteGroupCascade, leaveGroupMembership } from '../../core/groups/groupCascade';
 import { buildInviteLink, generateInviteCode } from '../../core/inviteCode';
-import { FolderKanban, Users, CalendarPlus, ChevronLeft, Plus, Mail, Link2, Copy, UserPlus } from 'lucide-react';
+import { FolderKanban, Users, CalendarPlus, ChevronLeft, Plus, Mail, Link2, Copy, UserPlus, Trash2, LogOut } from 'lucide-react';
 
 export const GroupsFeature: React.FC = () => {
   const { currentUser, allUsers } = useAuthStore();
@@ -101,6 +102,36 @@ export const GroupsFeature: React.FC = () => {
       .equals(selectedGroupId)
       .toArray();
   }, [activeView, selectedGroupId]);
+
+  const currentMembership = groupMembers?.find((member) => member.user.id === currentUser?.id);
+  const isGroupAdmin = currentMembership?.role === 'admin';
+
+  const handleDeleteGroup = async () => {
+    if (!selectedGroupId || !activeGroup || !isGroupAdmin) return;
+    const confirmed = window.confirm(
+      `¿Eliminar el grupo "${activeGroup.name}" y todos sus eventos/gastos? Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+    await deleteGroupCascade(selectedGroupId);
+    setView('groups');
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!currentMembership || isGroupAdmin) return;
+    const confirmed = window.confirm(`¿Salir del grupo "${activeGroup?.name}"?`);
+    if (!confirmed) return;
+    await leaveGroupMembership(currentMembership.memberId);
+    setView('groups');
+  };
+
+  const handleDeleteEvent = async (event: Event) => {
+    if (!isGroupAdmin) return;
+    const confirmed = window.confirm(
+      `¿Eliminar el evento "${event.name}" y todos sus gastos? Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+    await deleteEventCascade(event.id);
+  };
 
   // Manejo de creación de Grupo
   const handleCreateGroup = async (e: React.FormEvent) => {
@@ -424,13 +455,23 @@ export const GroupsFeature: React.FC = () => {
             <h1 style={{ fontSize: '28px', fontWeight: 800 }}>{activeGroup.name}</h1>
             <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>{activeGroup.description}</p>
           </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <Button variant="secondary" onClick={() => setIsInviteOpen(true)} icon={<Users size={16} />}>
               Invitar Miembro
             </Button>
             <Button onClick={() => setIsCreateEventOpen(true)} icon={<CalendarPlus size={16} />}>
               Nuevo Evento
             </Button>
+            {!isGroupAdmin && currentMembership && (
+              <Button variant="secondary" onClick={handleLeaveGroup} icon={<LogOut size={16} />}>
+                Salir del grupo
+              </Button>
+            )}
+            {isGroupAdmin && (
+              <Button variant="danger" onClick={handleDeleteGroup} icon={<Trash2 size={16} />}>
+                Eliminar grupo
+              </Button>
+            )}
           </div>
         </div>
 
@@ -514,6 +555,19 @@ export const GroupsFeature: React.FC = () => {
                       <Badge variant={evt.status === 'open' ? 'emerald' : 'rose'}>
                         {evt.status === 'open' ? 'Abierto' : 'Liquidado'}
                       </Badge>
+                      {isGroupAdmin && (
+                        <Button
+                          variant="danger"
+                          onClick={(clickEvent) => {
+                            clickEvent.stopPropagation();
+                            handleDeleteEvent(evt);
+                          }}
+                          icon={<Trash2 size={14} />}
+                          style={{ padding: '6px 10px', fontSize: '12px' }}
+                        >
+                          Eliminar
+                        </Button>
+                      )}
                       <span style={{ color: 'var(--primary)', fontWeight: 600 }}>&rarr;</span>
                     </div>
                   </Card>

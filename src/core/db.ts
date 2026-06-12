@@ -13,6 +13,7 @@ export interface Group {
   name: string;
   description: string;
   created_by: string;
+  invite_code?: string;
 }
 
 export interface GroupMember {
@@ -113,6 +114,18 @@ class FinSyncDatabase extends Dexie {
     this.version(2).stores({
       users: 'id, email, name, created_at',
       groups: 'id, name, created_by',
+      group_members: 'id, group_id, user_id, [group_id+user_id]',
+      events: 'id, group_id, name, status',
+      expenses: 'id, event_id, user_id, category, created_at',
+      expense_shares: 'id, expense_id, user_id, [expense_id+user_id]',
+      settlements: 'id, event_id, from_user, to_user, [event_id+from_user+to_user]',
+      sync_queue: 'id, entity_type, entity_id, status, created_at',
+      notifications: 'id, user_id, read, created_at',
+      personal_expenses: 'id, user_id, category, type, created_at'
+    });
+    this.version(3).stores({
+      users: 'id, email, name, created_at',
+      groups: 'id, name, created_by, invite_code',
       group_members: 'id, group_id, user_id, [group_id+user_id]',
       events: 'id, group_id, name, status',
       expenses: 'id, event_id, user_id, category, created_at',

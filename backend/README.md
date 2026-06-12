@@ -37,6 +37,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 | POST | `/api/auth/register` | No | Registro con email y contraseña |
 | POST | `/api/auth/login` | No | Inicio de sesión |
 | GET | `/api/auth/me` | Bearer | Perfil del usuario autenticado |
+| POST | `/api/groups/join` | Bearer | Unirse a un grupo con código de invitación |
 | POST | `/api/sync/push` | Bearer | Recibe un cambio de la cola offline |
 | GET | `/api/sync/pull` | Bearer | Devuelve datos visibles para el usuario |
 

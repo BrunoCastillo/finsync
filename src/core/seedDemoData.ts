@@ -27,7 +27,8 @@ export async function seedDemoData(): Promise<void> {
     id: DEMO_GROUP_ID,
     name: 'Viaje a la Playa',
     description: 'Gastos compartidos del fin de semana en Cartagena (demo precargada).',
-    created_by: brunoId
+    created_by: brunoId,
+    invite_code: 'PLAYA26FS'
   };
 
   const demoMembers: GroupMember[] = DEMO_USER_IDS.map((userId, index) => ({

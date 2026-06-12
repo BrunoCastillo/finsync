@@ -9,6 +9,7 @@ import {
   type AuthMode
 } from '../core/auth/session';
 import { triggerSync } from '../core/sync/syncEngine';
+import { backfillMissingInviteCodes } from '../core/groups/joinGroup';
 import { seedDemoData, seedPersonalDemoData } from '../core/seedDemoData';
 import { validateRegisterInput } from '../core/validation';
 
@@ -145,6 +146,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
       await seedDemoData();
       await seedPersonalDemoData();
+      await backfillMissingInviteCodes();
       await get().refreshUsers();
 
       const savedMode = getAuthMode();

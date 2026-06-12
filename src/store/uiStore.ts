@@ -8,6 +8,7 @@ interface UiStore {
   selectedEventId: string | null;
   openExpenseFormOnNavigate: boolean;
   openPersonalFormOnNavigate: boolean;
+  pendingJoinCode: string | null;
   setView: (
     view: ActiveView,
     groupId?: string | null,
@@ -15,6 +16,7 @@ interface UiStore {
     openExpenseForm?: boolean,
     openPersonalForm?: boolean
   ) => void;
+  setPendingJoinCode: (code: string | null) => void;
   clearExpenseFormIntent: () => void;
   clearPersonalFormIntent: () => void;
 }
@@ -25,6 +27,7 @@ export const useUiStore = create<UiStore>((set) => ({
   selectedEventId: null,
   openExpenseFormOnNavigate: false,
   openPersonalFormOnNavigate: false,
+  pendingJoinCode: null,
   setView: (view, groupId = null, eventId = null, openExpenseForm = false, openPersonalForm = false) => {
     set({
       activeView: view,
@@ -35,6 +38,7 @@ export const useUiStore = create<UiStore>((set) => ({
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   },
+  setPendingJoinCode: (code) => set({ pendingJoinCode: code }),
   clearExpenseFormIntent: () => set({ openExpenseFormOnNavigate: false }),
   clearPersonalFormIntent: () => set({ openPersonalFormOnNavigate: false })
 }));

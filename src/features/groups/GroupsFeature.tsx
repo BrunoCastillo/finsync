@@ -1,18 +1,26 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type Group, type GroupMember, type Event } from '../../core/db';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { Card, Button, Input, Modal, Badge } from '../../components/UI';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
-import { FolderKanban, Users, CalendarPlus, ChevronLeft, Plus, Mail } from 'lucide-react';
+import { joinGroupByInviteCode } from '../../core/groups/joinGroup';
+import { buildInviteLink, generateInviteCode } from '../../core/inviteCode';
+import { FolderKanban, Users, CalendarPlus, ChevronLeft, Plus, Mail, Link2, Copy, UserPlus } from 'lucide-react';
 
 export const GroupsFeature: React.FC = () => {
   const { currentUser, allUsers } = useAuthStore();
-  const { activeView, selectedGroupId, setView } = useUiStore();
+  const { activeView, selectedGroupId, setView, pendingJoinCode, setPendingJoinCode } = useUiStore();
 
   // Modales
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [isJoinGroupOpen, setIsJoinGroupOpen] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [joinError, setJoinError] = useState('');
+  const [joinSuccess, setJoinSuccess] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState('');
   const [groupName, setGroupName] = useState('');
   const [groupDesc, setGroupDesc] = useState('');
 
@@ -23,6 +31,25 @@ export const GroupsFeature: React.FC = () => {
 
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
   const [eventName, setEventName] = useState('');
+
+  useEffect(() => {
+    if (pendingJoinCode) {
+      setJoinCode(pendingJoinCode);
+      setIsJoinGroupOpen(true);
+      setPendingJoinCode(null);
+    }
+  }, [pendingJoinCode, setPendingJoinCode]);
+
+  const handleCopyInvite = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyFeedback(label);
+      setTimeout(() => setCopyFeedback(''), 2000);
+    } catch {
+      setCopyFeedback('No se pudo copiar');
+      setTimeout(() => setCopyFeedback(''), 2000);
+    }
+  };
 
   // Queries reactivas usando Dexie useLiveQuery
   const groups = useLiveQuery(async () => {
@@ -91,7 +118,8 @@ export const GroupsFeature: React.FC = () => {
       id: newGroupId,
       name: groupName.trim(),
       description: groupDesc.trim(),
-      created_by: currentUser.id
+      created_by: currentUser.id,
+      invite_code: generateInviteCode()
     };
 
     const newMembership: GroupMember = {
@@ -164,6 +192,87 @@ export const GroupsFeature: React.FC = () => {
       !(groupMembers ?? []).some((member) => member.user.id === user.id)
   );
 
+  const handleJoinGroup = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setJoinError('');
+    setJoinSuccess('');
+    if (!currentUser || !joinCode.trim()) return;
+
+    setIsJoining(true);
+    try {
+      const result = await joinGroupByInviteCode({
+        inviteCode: joinCode,
+        userId: currentUser.id,
+        userName: currentUser.name
+      });
+      setJoinSuccess(
+        result.alreadyMember
+          ? `Ya perteneces al grupo "${result.group.name}".`
+          : `Te uniste al grupo "${result.group.name}".`
+      );
+      setJoinCode('');
+      setTimeout(() => {
+        setIsJoinGroupOpen(false);
+        setJoinSuccess('');
+        setView('group-detail', result.group.id);
+      }, 900);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setJoinError(message || 'No se pudo unir al grupo.');
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const renderJoinGroupModal = () => (
+    <Modal
+      isOpen={isJoinGroupOpen}
+      onClose={() => {
+        setIsJoinGroupOpen(false);
+        setJoinError('');
+        setJoinSuccess('');
+      }}
+      title="Unirse a un Grupo"
+    >
+      <form onSubmit={handleJoinGroup} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'center' }}>
+          Pide el código de invitación al administrador del grupo o abre el enlace compartido.
+        </p>
+        <Input
+          label="Código de invitación"
+          placeholder="ej. PLAYA26FS"
+          value={joinCode}
+          onChange={(event) => {
+            setJoinCode(event.target.value.toUpperCase());
+            setJoinError('');
+          }}
+          required
+        />
+        {joinError && (
+          <p style={{ color: 'var(--danger)', fontSize: '13px', textAlign: 'center', fontWeight: 500 }}>{joinError}</p>
+        )}
+        {joinSuccess && (
+          <p style={{ color: 'var(--secondary)', fontSize: '13px', textAlign: 'center', fontWeight: 500 }}>{joinSuccess}</p>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setIsJoinGroupOpen(false);
+              setJoinError('');
+            }}
+          >
+            Cancelar
+          </Button>
+          <Button type="submit" icon={<UserPlus size={16} />} disabled={isJoining}>
+            {isJoining ? 'Uniéndose...' : 'Unirme'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+
   // Manejo de creación de Evento
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -194,9 +303,14 @@ export const GroupsFeature: React.FC = () => {
           <div className="page-title">
             <h1>Mis Grupos Financieros</h1>
           </div>
-          <Button onClick={() => setIsCreateGroupOpen(true)} icon={<Plus size={16} />}>
-            Crear Grupo
-          </Button>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <Button variant="secondary" onClick={() => setIsJoinGroupOpen(true)} icon={<Link2 size={16} />}>
+              Unirse con código
+            </Button>
+            <Button onClick={() => setIsCreateGroupOpen(true)} icon={<Plus size={16} />}>
+              Crear Grupo
+            </Button>
+          </div>
         </div>
 
         {groups && groups.length === 0 ? (
@@ -212,6 +326,14 @@ export const GroupsFeature: React.FC = () => {
               icon={<Plus size={16} />}
             >
               Crear Grupo Ahora
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setIsJoinGroupOpen(true)}
+              style={{ marginTop: '12px' }}
+              icon={<Link2 size={16} />}
+            >
+              Unirse con código
             </Button>
           </Card>
         ) : (
@@ -270,6 +392,8 @@ export const GroupsFeature: React.FC = () => {
             </div>
           </form>
         </Modal>
+
+        {renderJoinGroupModal()}
       </div>
     );
   }
@@ -309,6 +433,44 @@ export const GroupsFeature: React.FC = () => {
             </Button>
           </div>
         </div>
+
+        {activeGroup.invite_code && (
+          <Card glass style={{ padding: '20px', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '16px', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '6px' }}>Invitar con código</h2>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  Comparte este código o enlace para que otros se unan al grupo.
+                </p>
+                <p style={{ fontSize: '24px', fontWeight: 800, letterSpacing: '2px', marginTop: '10px', color: 'var(--primary)' }}>
+                  {activeGroup.invite_code}
+                </p>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', wordBreak: 'break-all' }}>
+                  {buildInviteLink(activeGroup.invite_code)}
+                </p>
+                {copyFeedback && (
+                  <p style={{ fontSize: '12px', color: 'var(--secondary)', marginTop: '8px' }}>{copyFeedback}</p>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <Button
+                  variant="secondary"
+                  icon={<Copy size={16} />}
+                  onClick={() => handleCopyInvite(activeGroup.invite_code!, 'Código copiado')}
+                >
+                  Copiar código
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={<Link2 size={16} />}
+                  onClick={() => handleCopyInvite(buildInviteLink(activeGroup.invite_code!), 'Enlace copiado')}
+                >
+                  Copiar enlace
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
 
         <div className="grid-2">
           {/* Columna Izquierda: Eventos */}
@@ -416,6 +578,9 @@ export const GroupsFeature: React.FC = () => {
           }}
           title="Agregar Miembro al Grupo"
         >
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+            En producción usa el código de invitación. En demo puedes agregar usuarios locales directamente.
+          </p>
           <form onSubmit={handleInviteMember} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div className="form-group">
               <label className="form-label">Seleccionar Usuario</label>
@@ -486,6 +651,8 @@ export const GroupsFeature: React.FC = () => {
             </div>
           </form>
         </Modal>
+
+        {renderJoinGroupModal()}
       </div>
     );
   }

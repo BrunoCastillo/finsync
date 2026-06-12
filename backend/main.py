@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers.auth_router import router as auth_router
+from routers.groups_router import router as groups_router
 from routers.sync_router import router as sync_router
 
 allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "*")
@@ -28,6 +29,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api/auth")
+app.include_router(groups_router, prefix="/api/groups")
 app.include_router(sync_router, prefix="/api/sync")
 
 

@@ -15,7 +15,7 @@ import { LayoutDashboard, Users, Bell, User, Wallet } from 'lucide-react';
 
 const App: React.FC = () => {
   const { currentUser, initializeAuth, isLoading } = useAuthStore();
-  const { activeView, setView } = useUiStore();
+  const { activeView, setView, setPendingJoinCode } = useUiStore();
   const { isOnline, pendingCount } = useSyncStore();
 
   const unreadNotificationsCount = useLiveQuery(async () => {
@@ -31,6 +31,31 @@ const App: React.FC = () => {
   useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);
+
+  // Abrir flujo de unión si la URL trae ?join=CODIGO
+  useEffect(() => {
+    if (isLoading) return;
+    const joinCode = new URLSearchParams(window.location.search).get('join');
+    if (joinCode) {
+      if (currentUser) {
+        setPendingJoinCode(joinCode);
+        setView('groups');
+      } else {
+        sessionStorage.setItem('FinSync_PendingJoinCode', joinCode);
+      }
+      const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+      window.history.replaceState({}, '', cleanUrl);
+    }
+  }, [currentUser, isLoading, setPendingJoinCode, setView]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const pendingJoinCode = sessionStorage.getItem('FinSync_PendingJoinCode');
+    if (!pendingJoinCode) return;
+    sessionStorage.removeItem('FinSync_PendingJoinCode');
+    setPendingJoinCode(pendingJoinCode);
+    setView('groups');
+  }, [currentUser, setPendingJoinCode, setView]);
 
   if (isLoading) {
     return (

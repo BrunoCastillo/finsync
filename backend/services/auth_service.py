@@ -13,6 +13,7 @@ import bcrypt
 import jwt
 from fastapi import HTTPException, status
 
+from services.database import insert_auth_account, is_postgres_enabled, load_auth_accounts_from_db
 from services.store import apply_sync_item, load_store
 from services.store import SyncPushRequest
 
@@ -31,6 +32,8 @@ def _ensure_auth_file() -> None:
 
 
 def load_auth_accounts() -> list[dict[str, Any]]:
+    if is_postgres_enabled():
+        return load_auth_accounts_from_db()
     _ensure_auth_file()
     data = json.loads(AUTH_PATH.read_text(encoding="utf-8"))
     return list(data.get("accounts", []))
@@ -132,17 +135,20 @@ def register_account(name: str, email: str, password: str, avatar: str) -> dict[
         )
     )
 
-    accounts = load_auth_accounts()
-    accounts.append(
-        {
-            "id": str(uuid.uuid4()),
-            "email": normalized_email,
-            "password_hash": hash_password(password),
-            "user_id": user_id,
-            "created_at": created_at,
-        }
-    )
-    save_auth_accounts(accounts)
+    account_record = {
+        "id": str(uuid.uuid4()),
+        "email": normalized_email,
+        "password_hash": hash_password(password),
+        "user_id": user_id,
+        "created_at": created_at,
+    }
+
+    if is_postgres_enabled():
+        insert_auth_account(account_record)
+    else:
+        accounts = load_auth_accounts()
+        accounts.append(account_record)
+        save_auth_accounts(accounts)
 
     access_token = create_access_token(user_id, normalized_email)
     return {

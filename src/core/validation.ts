@@ -40,6 +40,37 @@ export function validateRegisterInput(
   return { is_valid: true, normalized_name, normalized_email };
 }
 
+interface ValidateLoginInputParams {
+  email: string;
+}
+
+interface ValidateLoginInputSuccess {
+  is_valid: true;
+  normalized_email: string;
+}
+
+interface ValidateLoginInputFailure {
+  is_valid: false;
+  error: string;
+}
+
+export type ValidateLoginInputResult = ValidateLoginInputSuccess | ValidateLoginInputFailure;
+
+// Normaliza y valida el correo antes de iniciar sesión
+export function validateLoginInput(params: ValidateLoginInputParams): ValidateLoginInputResult {
+  const normalized_email = params.email.trim().toLowerCase();
+
+  if (!normalized_email) {
+    return { is_valid: false, error: 'Ingresa tu correo electrónico.' };
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized_email)) {
+    return { is_valid: false, error: 'Ingresa un correo electrónico válido.' };
+  }
+
+  return { is_valid: true, normalized_email };
+}
+
 interface ValidateAmountParams {
   amount: number;
   max_amount?: number;

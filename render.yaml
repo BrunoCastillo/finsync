@@ -1,3 +1,9 @@
+databases:
+  - name: finsync-db
+    databaseName: finsync
+    user: finsync
+    plan: free
+
 services:
   - type: web
     name: finsync-api
@@ -13,3 +19,7 @@ services:
         generateValue: true
       - key: PORT
         value: 8000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finsync-db
+          property: connectionString

@@ -11,7 +11,7 @@ import {
 import { triggerSync } from '../core/sync/syncEngine';
 import { backfillMissingInviteCodes } from '../core/groups/joinGroup';
 import { seedDemoData, seedPersonalDemoData } from '../core/seedDemoData';
-import { validateRegisterInput } from '../core/validation';
+import { validateRegisterInput, validateLoginInput } from '../core/validation';
 
 interface AuthStore {
   currentUser: User | null;
@@ -59,7 +59,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   isLoading: true,
 
   loginWithCredentials: async (email, password) => {
-    const authResponse = await loginWithApi({ email, password });
+    const validation = validateLoginInput({ email });
+    if (!validation.is_valid) {
+      throw new Error(validation.error);
+    }
+
+    const authResponse = await loginWithApi({ email: validation.normalized_email, password });
     await completeApiSession(authResponse);
     set({ currentUser: authResponse.user, authMode: 'api' });
     await get().refreshUsers();

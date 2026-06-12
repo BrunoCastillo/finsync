@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers.auth_router import router as auth_router
 from routers.groups_router import router as groups_router
 from routers.sync_router import router as sync_router
+from services.database import init_database
 
 allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "*")
 allowed_origins = (
@@ -31,6 +32,11 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(groups_router, prefix="/api/groups")
 app.include_router(sync_router, prefix="/api/sync")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    init_database()
 
 
 @app.get("/health")

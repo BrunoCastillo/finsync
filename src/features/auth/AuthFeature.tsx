@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { Card, Button, Input, Badge } from '../../components/UI';
-import { validatePassword, validateRegisterInput } from '../../core/validation';
+import { validatePassword, validateRegisterInput, validateLoginInput } from '../../core/validation';
 import { LogIn, UserPlus, LogOut, FlaskConical } from 'lucide-react';
 
 type AuthTab = 'login' | 'register' | 'demo';
@@ -47,13 +47,24 @@ export const AuthFeature: React.FC = () => {
       return;
     }
 
+    const emailValidation = validateLoginInput({ email });
+    if (!emailValidation.is_valid) {
+      setError(emailValidation.error);
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
-      await loginWithCredentials(email, password);
+      await loginWithCredentials(emailValidation.normalized_email, password);
       setEmail('');
       setPassword('');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      setError(message || 'No se pudo iniciar sesión.');
+      const loginHint =
+        message.includes('incorrectos')
+          ? ' Si te registraste antes, es posible que la cuenta se haya perdido en un despliegue anterior: prueba registrarte de nuevo con el mismo correo.'
+          : '';
+      setError((message || 'No se pudo iniciar sesión.') + loginHint);
     } finally {
       setIsSubmitting(false);
     }

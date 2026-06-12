@@ -79,3 +79,49 @@ export async function fetchCurrentUserFromApi(): Promise<User | null> {
   const data = (await response.json()) as { user: User };
   return data.user;
 }
+
+async function requestAuthJson<T>(
+  path: string,
+  options: { method: string; body?: Record<string, string> }
+): Promise<T> {
+  const response = await fetch(`${API_BASE}/api/auth/${path}`, {
+    method: options.method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseAuthError(response));
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export async function updateProfileWithApi(params: {
+  name: string;
+  avatar: string;
+}): Promise<{ user: User }> {
+  return requestAuthJson('profile', {
+    method: 'PATCH',
+    body: {
+      name: params.name,
+      avatar: params.avatar
+    }
+  });
+}
+
+export async function changePasswordWithApi(params: {
+  current_password: string;
+  new_password: string;
+}): Promise<void> {
+  await requestAuthJson('change-password', {
+    method: 'POST',
+    body: {
+      current_password: params.current_password,
+      new_password: params.new_password
+    }
+  });
+}

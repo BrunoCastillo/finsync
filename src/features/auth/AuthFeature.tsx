@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { Card, Button, Input, Badge } from '../../components/UI';
-import { validatePassword, validateRegisterInput, validateLoginInput } from '../../core/validation';
-import { LogIn, UserPlus, LogOut, FlaskConical } from 'lucide-react';
+import { validatePassword, validateRegisterInput, validateLoginInput, validateProfileName } from '../../core/validation';
+import { LogIn, UserPlus, LogOut, FlaskConical, KeyRound, Save } from 'lucide-react';
 
 type AuthTab = 'login' | 'register' | 'demo';
 
@@ -13,6 +13,8 @@ export const AuthFeature: React.FC = () => {
     authMode,
     loginWithCredentials,
     registerWithCredentials,
+    updateProfile,
+    changePassword,
     loginDemo,
     logout,
     isLoading
@@ -26,8 +28,25 @@ export const AuthFeature: React.FC = () => {
   const [avatar, setAvatar] = useState('🐻');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileAvatar, setProfileAvatar] = useState('🐻');
+  const [profileMessage, setProfileMessage] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const avatares = ['🐻', '🦊', '🦁', '🐼', '🐨', '🐸', '🐯', '🐙', '🦖', '🦄'];
+
+  useEffect(() => {
+    if (!currentUser) return;
+    setProfileName(currentUser.name);
+    setProfileAvatar(currentUser.avatar);
+  }, [currentUser]);
 
   const resetForm = () => {
     setError('');
@@ -114,6 +133,66 @@ export const AuthFeature: React.FC = () => {
     }
   };
 
+  const handleSaveProfile = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setProfileError('');
+    setProfileMessage('');
+
+    const validation = validateProfileName({ name: profileName });
+    if (!validation.is_valid) {
+      setProfileError(validation.error);
+      return;
+    }
+
+    setIsSavingProfile(true);
+    try {
+      await updateProfile(validation.normalized_name, profileAvatar);
+      setProfileMessage('Perfil actualizado correctamente.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setProfileError(message || 'No se pudo actualizar el perfil.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleChangePassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setPasswordError('');
+    setPasswordMessage('');
+
+    const currentValidation = validatePassword({ password: currentPassword });
+    if (!currentValidation.is_valid) {
+      setPasswordError('La contraseña actual no es válida.');
+      return;
+    }
+
+    const newValidation = validatePassword({ password: newPassword });
+    if (!newValidation.is_valid) {
+      setPasswordError(newValidation.error);
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError('Las contraseñas nuevas no coinciden.');
+      return;
+    }
+
+    setIsSavingPassword(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPasswordMessage('Contraseña actualizada correctamente.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setPasswordError(message || 'No se pudo cambiar la contraseña.');
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '48px' }}>
@@ -151,6 +230,107 @@ export const AuthFeature: React.FC = () => {
                 </Badge>
               </div>
             </div>
+
+            {authMode === 'api' && (
+              <>
+                <form
+                  onSubmit={handleSaveProfile}
+                  style={{
+                    width: '100%',
+                    borderTop: '1px solid var(--border-glass)',
+                    paddingTop: '20px',
+                    marginTop: '8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '14px',
+                    textAlign: 'left'
+                  }}
+                >
+                  <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Editar perfil</h3>
+                  <Input
+                    label="Nombre"
+                    value={profileName}
+                    onChange={(event) => setProfileName(event.target.value)}
+                    required
+                  />
+                  <div className="form-group">
+                    <label className="form-label">Avatar</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '6px' }}>
+                      {avatares.map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setProfileAvatar(item)}
+                          style={{
+                            width: '40px',
+                            height: '40px',
+                            fontSize: '20px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: profileAvatar === item ? 'var(--primary-light)' : 'rgba(255,255,255,0.03)',
+                            border: profileAvatar === item ? '2px solid var(--primary)' : '1px solid var(--border-glass)',
+                            borderRadius: '50%',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {profileError && <p style={{ color: 'var(--danger)', fontSize: '13px' }}>{profileError}</p>}
+                  {profileMessage && <p style={{ color: 'var(--secondary)', fontSize: '13px' }}>{profileMessage}</p>}
+                  <Button type="submit" icon={<Save size={16} />} disabled={isSavingProfile}>
+                    {isSavingProfile ? 'Guardando...' : 'Guardar perfil'}
+                  </Button>
+                </form>
+
+                <form
+                  onSubmit={handleChangePassword}
+                  style={{
+                    width: '100%',
+                    borderTop: '1px solid var(--border-glass)',
+                    paddingTop: '20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '14px',
+                    textAlign: 'left'
+                  }}
+                >
+                  <h3 style={{ fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <KeyRound size={16} />
+                    Cambiar contraseña
+                  </h3>
+                  <Input
+                    label="Contraseña actual"
+                    type="password"
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    required
+                  />
+                  <Input
+                    label="Nueva contraseña"
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    required
+                  />
+                  <Input
+                    label="Confirmar nueva contraseña"
+                    type="password"
+                    value={confirmNewPassword}
+                    onChange={(event) => setConfirmNewPassword(event.target.value)}
+                    required
+                  />
+                  {passwordError && <p style={{ color: 'var(--danger)', fontSize: '13px' }}>{passwordError}</p>}
+                  {passwordMessage && <p style={{ color: 'var(--secondary)', fontSize: '13px' }}>{passwordMessage}</p>}
+                  <Button type="submit" variant="secondary" disabled={isSavingPassword}>
+                    {isSavingPassword ? 'Actualizando...' : 'Actualizar contraseña'}
+                  </Button>
+                </form>
+              </>
+            )}
 
             {authMode === 'demo' && (
               <div style={{ width: '100%', borderTop: '1px solid var(--border-glass)', padding: '16px 0', marginTop: '16px' }}>

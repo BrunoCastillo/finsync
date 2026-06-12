@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { db, type User } from '../core/db';
-import { fetchCurrentUserFromApi, loginWithApi, registerWithApi } from '../core/auth/authApi';
+import { fetchCurrentUserFromApi, loginWithApi, registerWithApi, updateProfileWithApi, changePasswordWithApi } from '../core/auth/authApi';
 import {
   clearAuthSession,
   getAccessToken,
@@ -8,10 +8,10 @@ import {
   setAuthSession,
   type AuthMode
 } from '../core/auth/session';
-import { triggerSync } from '../core/sync/syncEngine';
+import { addToSyncQueue, triggerSync } from '../core/sync/syncEngine';
 import { backfillMissingInviteCodes } from '../core/groups/joinGroup';
 import { seedDemoData, seedPersonalDemoData } from '../core/seedDemoData';
-import { validateRegisterInput, validateLoginInput } from '../core/validation';
+import { validateRegisterInput, validateLoginInput, validatePassword, validateProfileName } from '../core/validation';
 
 interface AuthStore {
   currentUser: User | null;
@@ -25,6 +25,8 @@ interface AuthStore {
     password: string,
     avatar: string
   ) => Promise<User>;
+  updateProfile: (name: string, avatar: string) => Promise<User>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   loginDemo: (userId: string) => Promise<void>;
   logout: () => void;
   refreshUsers: () => Promise<void>;
@@ -89,6 +91,36 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     await get().refreshUsers();
     triggerSync();
     return authResponse.user;
+  },
+
+  updateProfile: async (name, avatar) => {
+    const validation = validateProfileName({ name });
+    if (!validation.is_valid) {
+      throw new Error(validation.error);
+    }
+
+    const response = await updateProfileWithApi({
+      name: validation.normalized_name,
+      avatar
+    });
+    await persistLocalUser(response.user);
+    await addToSyncQueue('user', response.user.id, 'UPDATE', response.user);
+    set({ currentUser: response.user });
+    await get().refreshUsers();
+    triggerSync();
+    return response.user;
+  },
+
+  changePassword: async (currentPassword, newPassword) => {
+    const passwordValidation = validatePassword({ password: newPassword });
+    if (!passwordValidation.is_valid) {
+      throw new Error(passwordValidation.error);
+    }
+
+    await changePasswordWithApi({
+      current_password: currentPassword,
+      new_password: newPassword
+    });
   },
 
   loginDemo: async (userId) => {

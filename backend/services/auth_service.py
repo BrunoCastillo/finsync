@@ -13,7 +13,7 @@ import bcrypt
 import jwt
 from fastapi import HTTPException, status
 
-from services.database import insert_auth_account, is_postgres_enabled, load_auth_accounts_from_db
+from services.database import insert_auth_account, is_postgres_enabled, load_auth_accounts_from_db, update_password_hash_in_db
 from services.store import apply_sync_item, load_store
 from services.store import SyncPushRequest
 
@@ -189,3 +189,55 @@ def get_authenticated_user(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
 
     return user_profile
+
+
+def update_user_profile(user_id: str, name: str, avatar: str) -> dict[str, Any]:
+    trimmed_name = name.strip()
+    if len(trimmed_name) < 2:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El nombre es demasiado corto.")
+    if len(trimmed_name) > 80:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El nombre no puede superar 80 caracteres.")
+
+    user_profile = get_user_profile(user_id)
+    if user_profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
+
+    updated_profile = {
+        **user_profile,
+        "name": trimmed_name,
+        "avatar": avatar or user_profile.get("avatar", "👤"),
+    }
+
+    apply_sync_item(
+        SyncPushRequest(
+            entity_type="user",
+            entity_id=user_id,
+            action="UPDATE",
+            payload=updated_profile,
+        )
+    )
+    return updated_profile
+
+
+def change_user_password(user_id: str, current_password: str, new_password: str) -> None:
+    account = find_account_by_user_id(user_id)
+    if account is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cuenta no encontrada.")
+
+    if not verify_password(current_password, account["password_hash"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Contraseña actual incorrecta.")
+
+    validate_password_strength(new_password)
+    password_hash = hash_password(new_password)
+
+    if is_postgres_enabled():
+        update_password_hash_in_db(account["email"], password_hash)
+        return
+
+    accounts = load_auth_accounts()
+    for auth_account in accounts:
+        if auth_account.get("user_id") == user_id:
+            auth_account["password_hash"] = password_hash
+            break
+    save_auth_accounts(accounts)
+

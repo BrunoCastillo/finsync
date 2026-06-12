@@ -87,6 +87,14 @@ def insert_auth_account(account: dict[str, Any]) -> None:
         )
 
 
+def update_password_hash_in_db(email: str, password_hash: str) -> None:
+    with get_cursor() as cursor:
+        cursor.execute(
+            "UPDATE auth_accounts SET password_hash = %s WHERE email = %s",
+            (password_hash, email),
+        )
+
+
 def load_store_from_db(default_store: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
     store = {key: list(rows) for key, rows in default_store.items()}
 

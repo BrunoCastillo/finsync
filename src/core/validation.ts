@@ -71,6 +71,37 @@ export function validateLoginInput(params: ValidateLoginInputParams): ValidateLo
   return { is_valid: true, normalized_email };
 }
 
+interface ValidateProfileNameParams {
+  name: string;
+}
+
+interface ValidateProfileNameSuccess {
+  is_valid: true;
+  normalized_name: string;
+}
+
+interface ValidateProfileNameFailure {
+  is_valid: false;
+  error: string;
+}
+
+export type ValidateProfileNameResult = ValidateProfileNameSuccess | ValidateProfileNameFailure;
+
+// Valida el nombre visible del perfil del usuario
+export function validateProfileName(params: ValidateProfileNameParams): ValidateProfileNameResult {
+  const normalized_name = params.name.trim();
+
+  if (normalized_name.length < 2) {
+    return { is_valid: false, error: 'El nombre debe tener al menos 2 caracteres.' };
+  }
+
+  if (normalized_name.length > 80) {
+    return { is_valid: false, error: 'El nombre no puede superar 80 caracteres.' };
+  }
+
+  return { is_valid: true, normalized_name };
+}
+
 interface ValidateAmountParams {
   amount: number;
   max_amount?: number;

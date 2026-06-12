@@ -3,6 +3,7 @@ import { db, type User, type Expense, type ExpenseShare } from '../../core/db';
 import { useAuthStore } from '../../store/authStore';
 import { Button, Input, Modal } from '../../components/UI';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
+import { validateAmount } from '../../core/validation';
 import { DollarSign, CheckSquare, Square } from 'lucide-react';
 
 interface ExpensesFeatureProps {
@@ -18,6 +19,45 @@ interface ExpensesFeatureProps {
 
 type SplitType = 'equal' | 'percentage' | 'shares' | 'custom';
 
+function gcd(a: number, b: number): number {
+  return b === 0 ? Math.abs(a) : gcd(b, a % b);
+}
+
+function tryInferShareParts(
+  shares: ExpenseShare[],
+  amount: number
+): Record<string, string> | null {
+  if (shares.length === 0 || amount <= 0) return null;
+
+  const amountCents = Math.round(amount * 100);
+  const shareCents = shares.map((share) => Math.round(share.share_amount * 100));
+
+  let divisor = shareCents[0];
+  for (let index = 1; index < shareCents.length; index += 1) {
+    divisor = gcd(divisor, shareCents[index]);
+  }
+  if (divisor <= 0) return null;
+
+  const parts = shareCents.map((cents) => cents / divisor);
+  const totalParts = parts.reduce((sum, part) => sum + part, 0);
+
+  let accumulated = 0;
+  for (let index = 0; index < shares.length; index += 1) {
+    const expectedCents =
+      index === shares.length - 1
+        ? amountCents - accumulated
+        : Math.round((amountCents * parts[index]) / totalParts);
+    if (Math.abs(expectedCents - shareCents[index]) > 1) return null;
+    accumulated += expectedCents;
+  }
+
+  const result: Record<string, string> = {};
+  shares.forEach((share, index) => {
+    result[share.user_id] = String(parts[index]);
+  });
+  return result;
+}
+
 function inferSplitType(shares: ExpenseShare[], amount: number): SplitType {
   if (shares.length === 0) return 'equal';
 
@@ -29,6 +69,10 @@ function inferSplitType(shares: ExpenseShare[], amount: number): SplitType {
   const percentageSum = percentages.reduce((acc, value) => acc + value, 0);
   if (Math.abs(percentageSum - 100) < 0.1) {
     return 'percentage';
+  }
+
+  if (tryInferShareParts(shares, amount)) {
+    return 'shares';
   }
 
   return 'custom';
@@ -72,12 +116,19 @@ export const ExpensesFeature: React.FC<ExpensesFeatureProps> = ({
         initialValues[member.user.id] = '';
       });
 
+      const shareParts =
+        detectedSplitType === 'shares'
+          ? tryInferShareParts(existingShares, editingExpense.amount)
+          : null;
+
       existingShares.forEach((share) => {
         initialParticipants[share.user_id] = true;
         if (detectedSplitType === 'percentage') {
           initialValues[share.user_id] = String(
             Math.round((share.share_amount / editingExpense.amount) * 100)
           );
+        } else if (detectedSplitType === 'shares' && shareParts) {
+          initialValues[share.user_id] = shareParts[share.user_id] ?? '';
         } else if (detectedSplitType === 'custom') {
           initialValues[share.user_id] = String(share.share_amount);
         }
@@ -135,8 +186,9 @@ export const ExpensesFeature: React.FC<ExpensesFeatureProps> = ({
     setError('');
 
     const amount = parseFloat(amountStr);
-    if (isNaN(amount) || amount <= 0) {
-      setError('Por favor, ingresa un monto válido mayor a 0.');
+    const amountValidation = validateAmount({ amount });
+    if (!amountValidation.is_valid) {
+      setError(amountValidation.error);
       return;
     }
 

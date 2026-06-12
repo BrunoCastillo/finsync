@@ -1,6 +1,7 @@
 import { db, type SyncQueueItem } from '../db';
 import type { Table } from 'dexie';
 import { create } from 'zustand';
+import { getAuthHeaders, isApiAuthEnabled } from '../auth/session';
 
 // Zustand Store for Sync Status
 interface SyncStore {
@@ -162,10 +163,15 @@ function applySyncToMockRemote(item: SyncQueueItem, payload: Record<string, unkn
 }
 
 async function syncItemToApi(item: SyncQueueItem, payload: Record<string, unknown>): Promise<boolean> {
+  if (!isApiAuthEnabled()) return false;
+
   try {
     const response = await fetch(`${API_BASE}/api/sync/push`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify({
         entity_type: item.entity_type,
         entity_id: item.entity_id,
@@ -180,8 +186,15 @@ async function syncItemToApi(item: SyncQueueItem, payload: Record<string, unknow
 }
 
 async function fetchRemoteStore(): Promise<{ store: MockRemoteDB; source: 'api' | 'mock' }> {
+  if (!isApiAuthEnabled()) {
+    return { store: getMockRemoteDB(), source: 'mock' };
+  }
+
   try {
-    const response = await fetch(`${API_BASE}/api/sync/pull`, { cache: 'no-store' });
+    const response = await fetch(`${API_BASE}/api/sync/pull`, {
+      cache: 'no-store',
+      headers: getAuthHeaders()
+    });
     if (response.ok) {
       const data = (await response.json()) as Partial<MockRemoteDB>;
       return {

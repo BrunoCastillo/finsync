@@ -1,17 +1,33 @@
 import { create } from 'zustand';
 import { db, type User } from '../core/db';
-import { addToSyncQueue, generateUUID } from '../core/sync/syncEngine';
+import { fetchCurrentUserFromApi, loginWithApi, registerWithApi } from '../core/auth/authApi';
+import {
+  clearAuthSession,
+  getAccessToken,
+  getAuthMode,
+  setAuthSession,
+  type AuthMode
+} from '../core/auth/session';
+import { triggerSync } from '../core/sync/syncEngine';
 import { seedDemoData, seedPersonalDemoData } from '../core/seedDemoData';
+import { validateRegisterInput } from '../core/validation';
 
 interface AuthStore {
   currentUser: User | null;
   allUsers: User[];
+  authMode: AuthMode | null;
   isLoading: boolean;
-  login: (userId: string) => Promise<void>;
+  loginWithCredentials: (email: string, password: string) => Promise<void>;
+  registerWithCredentials: (
+    name: string,
+    email: string,
+    password: string,
+    avatar: string
+  ) => Promise<User>;
+  loginDemo: (userId: string) => Promise<void>;
   logout: () => void;
-  register: (name: string, email: string, avatar: string) => Promise<User>;
   refreshUsers: () => Promise<void>;
-  seedMockUsers: () => Promise<void>;
+  initializeAuth: () => Promise<void>;
 }
 
 const DEFAULT_USERS = [
@@ -22,38 +38,66 @@ const DEFAULT_USERS = [
   { id: 'user-cristian-5555-6666-777777777777', name: 'Cristian', email: 'cristian@finsync.com', avatar: '🐨' }
 ];
 
+async function persistLocalUser(user: User) {
+  await db.users.put(user);
+}
+
+async function completeApiSession(authResponse: { access_token: string; user: User }) {
+  await persistLocalUser(authResponse.user);
+  setAuthSession({
+    token: authResponse.access_token,
+    mode: 'api',
+    userId: authResponse.user.id
+  });
+}
+
 export const useAuthStore = create<AuthStore>((set, get) => ({
   currentUser: null,
   allUsers: [],
+  authMode: null,
   isLoading: true,
 
-  login: async (userId) => {
-    const user = await db.users.get(userId);
-    if (user) {
-      set({ currentUser: user });
-      localStorage.setItem('FinSync_CurrentUser', userId);
+  loginWithCredentials: async (email, password) => {
+    const authResponse = await loginWithApi({ email, password });
+    await completeApiSession(authResponse);
+    set({ currentUser: authResponse.user, authMode: 'api' });
+    await get().refreshUsers();
+    triggerSync();
+  },
+
+  registerWithCredentials: async (name, email, password, avatar) => {
+    const validation = validateRegisterInput({ name, email });
+    if (!validation.is_valid) {
+      throw new Error(validation.error);
     }
+
+    const authResponse = await registerWithApi({
+      name: validation.normalized_name,
+      email: validation.normalized_email,
+      password,
+      avatar
+    });
+
+    await completeApiSession(authResponse);
+    set({ currentUser: authResponse.user, authMode: 'api' });
+    await get().refreshUsers();
+    triggerSync();
+    return authResponse.user;
+  },
+
+  loginDemo: async (userId) => {
+    const user = await db.users.get(userId);
+    if (!user) {
+      throw new Error('Usuario demo no encontrado.');
+    }
+
+    setAuthSession({ token: null, mode: 'demo', userId });
+    set({ currentUser: user, authMode: 'demo' });
   },
 
   logout: () => {
-    set({ currentUser: null });
-    localStorage.removeItem('FinSync_CurrentUser');
-  },
-
-  register: async (name, email, avatar) => {
-    const newUser: User = {
-      id: generateUUID(),
-      name,
-      email,
-      avatar: avatar || '👤',
-      created_at: new Date().toISOString()
-    };
-
-    await db.users.add(newUser);
-    await addToSyncQueue('user', newUser.id, 'INSERT', newUser);
-    await get().refreshUsers();
-    await get().login(newUser.id);
-    return newUser;
+    clearAuthSession();
+    set({ currentUser: null, authMode: null });
   },
 
   refreshUsers: async () => {
@@ -61,33 +105,39 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     set({ allUsers: users });
   },
 
-  seedMockUsers: async () => {
+  initializeAuth: async () => {
     set({ isLoading: true });
     try {
-      // Sembrar usuarios demo de forma idempotente
-      for (const u of DEFAULT_USERS) {
-        const existing = await db.users.get(u.id);
-        const userObj: User = {
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          avatar: u.avatar,
+      for (const demoUser of DEFAULT_USERS) {
+        const existing = await db.users.get(demoUser.id);
+        await db.users.put({
+          id: demoUser.id,
+          name: demoUser.name,
+          email: demoUser.email,
+          avatar: demoUser.avatar,
           created_at: existing?.created_at ?? new Date().toISOString()
-        };
-        await db.users.put(userObj);
+        });
       }
 
       const remoteKey = 'FinSync_MockRemoteDB';
       const remoteData = localStorage.getItem(remoteKey) ? JSON.parse(localStorage.getItem(remoteKey)!) : null;
       if (!remoteData || remoteData.users.length === 0) {
         const newRemoteData = remoteData || {
-          users: [], groups: [], group_members: [], events: [], expenses: [], expense_shares: [], settlements: [], notifications: []
+          users: [],
+          groups: [],
+          group_members: [],
+          events: [],
+          expenses: [],
+          expense_shares: [],
+          settlements: [],
+          notifications: [],
+          personal_expenses: []
         };
-        newRemoteData.users = DEFAULT_USERS.map((u) => ({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          avatar: u.avatar,
+        newRemoteData.users = DEFAULT_USERS.map((user) => ({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar,
           created_at: new Date().toISOString()
         }));
         localStorage.setItem(remoteKey, JSON.stringify(newRemoteData));
@@ -97,22 +147,32 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       await seedPersonalDemoData();
       await get().refreshUsers();
 
-      // Cargar sesión persistida
-      const savedUserId = localStorage.getItem('FinSync_CurrentUser');
-      if (savedUserId) {
-        const user = await db.users.get(savedUserId);
-        if (user) {
-          set({ currentUser: user });
-        } else {
-          // Loguearse por defecto como Bruno si no hay usuario
-          await get().login(DEFAULT_USERS[0].id);
+      const savedMode = getAuthMode();
+      const savedToken = getAccessToken();
+
+      if (savedMode === 'api' && savedToken) {
+        const remoteUser = await fetchCurrentUserFromApi();
+        if (remoteUser) {
+          await persistLocalUser(remoteUser);
+          set({ currentUser: remoteUser, authMode: 'api' });
+          triggerSync();
+          return;
         }
-      } else {
-        // Loguearse por defecto como Bruno
-        await get().login(DEFAULT_USERS[0].id);
+        clearAuthSession();
+      }
+
+      if (savedMode === 'demo') {
+        const savedUserId = localStorage.getItem('FinSync_CurrentUser');
+        if (savedUserId) {
+          const demoUser = await db.users.get(savedUserId);
+          if (demoUser) {
+            set({ currentUser: demoUser, authMode: 'demo' });
+            return;
+          }
+        }
       }
     } catch (error) {
-      console.error('Error seeding users:', error);
+      console.error('Error initializing auth:', error);
     } finally {
       set({ isLoading: false });
     }

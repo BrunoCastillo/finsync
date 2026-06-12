@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { Card, Button, Input, Modal, Badge } from '../../components/UI';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
+import { validateAmount } from '../../core/validation';
 import { Plus, Pencil, Trash2, DollarSign, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 
 const CATEGORIES = ['Alimentación', 'Transporte', 'Vivienda', 'Salud', 'Educación', 'Entretenimiento', 'Viajes', 'Otros'];
@@ -113,13 +114,19 @@ export const PersonalExpensesFeature: React.FC = () => {
     if (!currentUser) return;
 
     const amount = parseFloat(amountStr);
-    if (Number.isNaN(amount) || amount <= 0) {
-      setError('Ingresa un monto válido mayor a 0.');
+    const amountValidation = validateAmount({ amount });
+    if (!amountValidation.is_valid) {
+      setError(amountValidation.error);
       return;
     }
 
     if (!description.trim()) {
       setError('Ingresa una descripción.');
+      return;
+    }
+
+    if (description.trim().length > 120) {
+      setError('La descripción no puede superar 120 caracteres.');
       return;
     }
 

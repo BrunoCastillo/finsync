@@ -1,4 +1,6 @@
 import React, { useEffect } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from './core/db';
 import { useAuthStore } from './store/authStore';
 import { useUiStore } from './store/uiStore';
 import { useSyncStore } from './core/sync/syncEngine';
@@ -12,14 +14,23 @@ import { Badge } from './components/UI';
 import { LayoutDashboard, Users, Bell, User, Wallet } from 'lucide-react';
 
 const App: React.FC = () => {
-  const { currentUser, seedMockUsers, isLoading } = useAuthStore();
+  const { currentUser, initializeAuth, isLoading } = useAuthStore();
   const { activeView, setView } = useUiStore();
   const { isOnline, pendingCount } = useSyncStore();
 
-  // Sembrar usuarios de prueba al montar la aplicación
+  const unreadNotificationsCount = useLiveQuery(async () => {
+    if (!currentUser) return 0;
+    return db.notifications
+      .where('user_id')
+      .equals(currentUser.id)
+      .filter((notification) => notification.read === 0)
+      .count();
+  }, [currentUser]);
+
+  // Inicializar autenticación y datos demo al montar la aplicación
   useEffect(() => {
-    seedMockUsers();
-  }, [seedMockUsers]);
+    initializeAuth();
+  }, [initializeAuth]);
 
   if (isLoading) {
     return (
@@ -126,10 +137,18 @@ const App: React.FC = () => {
                   <button
                     onClick={() => setView('notifications')}
                     className={`nav-item ${activeView === 'notifications' ? 'active' : ''}`}
-                    style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left' }}
+                    style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', position: 'relative' }}
                   >
                     <Bell size={18} />
                     <span>Notificaciones</span>
+                    {(unreadNotificationsCount ?? 0) > 0 && (
+                      <Badge
+                        variant="rose"
+                        style={{ marginLeft: 'auto', fontSize: '10px', padding: '2px 6px' }}
+                      >
+                        {unreadNotificationsCount}
+                      </Badge>
+                    )}
                   </button>
                 </li>
                 <li>
@@ -202,18 +221,27 @@ const App: React.FC = () => {
             >
               <Bell size={20} />
               <span>Alertas</span>
-              {pendingCount > 0 && (
+              {(unreadNotificationsCount ?? 0) > 0 && (
                 <span
                   style={{
                     position: 'absolute',
                     top: '2px',
                     right: '12px',
-                    width: '8px',
-                    height: '8px',
-                    backgroundColor: 'var(--warning)',
-                    borderRadius: '50%'
+                    minWidth: '16px',
+                    height: '16px',
+                    padding: '0 4px',
+                    backgroundColor: 'var(--danger)',
+                    color: 'white',
+                    borderRadius: '999px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                   }}
-                />
+                >
+                  {(unreadNotificationsCount ?? 0) > 9 ? '9+' : unreadNotificationsCount}
+                </span>
               )}
             </button>
             <button

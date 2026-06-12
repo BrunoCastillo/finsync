@@ -46,9 +46,25 @@ export const DashboardFeature: React.FC = () => {
   const { isOnline, isSyncing, pendingCount, syncHistory, setOnline } = useSyncStore();
 
   // Queries reactivas usando Dexie
+  const userEventIds = useLiveQuery(async () => {
+    if (!currentUser) return new Set<string>();
+
+    const memberships = await db.group_members.where('user_id').equals(currentUser.id).toArray();
+    const groupIds = memberships.map((membership) => membership.group_id);
+    if (groupIds.length === 0) return new Set<string>();
+
+    const events = await db.events.where('group_id').anyOf(groupIds).toArray();
+    return new Set(events.map((event) => event.id));
+  }, [currentUser]);
+
   const totalExpensesCount = useLiveQuery(async () => {
-    return db.expenses.count();
-  });
+    if (!currentUser) return 0;
+    const eventIds = userEventIds ?? new Set<string>();
+    if (eventIds.size === 0) return 0;
+
+    const expenses = await db.expenses.toArray();
+    return expenses.filter((expense) => eventIds.has(expense.event_id)).length;
+  }, [currentUser, userEventIds]);
 
   const totalGroupsCount = useLiveQuery(async () => {
     if (!currentUser) return 0;
@@ -68,31 +84,33 @@ export const DashboardFeature: React.FC = () => {
     return { expenses, income, balance: income - expenses, count: monthRows.length };
   }, [currentUser]);
 
-  // Cargar todos los gastos donde participa el usuario actual para sacar estadísticas
+  // Cargar gastos grupales solo de eventos donde participa el usuario
   const expensesStats = useLiveQuery(async () => {
     if (!currentUser) return { totalPaid: 0, totalShare: 0, byCategory: {} as Record<string, number> };
 
-    const allExpenses = await db.expenses.toArray();
-    
-    // Gastos pagados por el usuario
-    const userPaid = allExpenses
-      .filter((e) => e.user_id === currentUser.id)
-      .reduce((acc, curr) => acc + curr.amount, 0);
+    const eventIds = userEventIds ?? new Set<string>();
+    if (eventIds.size === 0) {
+      return { totalPaid: 0, totalShare: 0, byCategory: {} as Record<string, number> };
+    }
 
-    // Cargar todas las particiones asignadas a este usuario
-    const userShares = await db.expense_shares
-      .where('user_id')
-      .equals(currentUser.id)
-      .toArray();
-    
-    const userShareTotal = userShares.reduce((acc, curr) => acc + curr.share_amount, 0);
+    const groupExpenses = (await db.expenses.toArray()).filter((expense) =>
+      eventIds.has(expense.event_id)
+    );
+    const expenseIds = new Set(groupExpenses.map((expense) => expense.id));
 
-    // Agrupar por categoría todos los gastos pagados por el usuario para el gráfico SVG
+    const userPaid = groupExpenses
+      .filter((expense) => expense.user_id === currentUser.id)
+      .reduce((acc, expense) => acc + expense.amount, 0);
+
+    const userShares = (await db.expense_shares.where('user_id').equals(currentUser.id).toArray())
+      .filter((share) => expenseIds.has(share.expense_id));
+
+    const userShareTotal = userShares.reduce((acc, share) => acc + share.share_amount, 0);
+
     const byCategory: Record<string, number> = {};
-    allExpenses.forEach((exp) => {
-      // Solo tomamos en cuenta gastos asociados a los eventos y grupos en los que participa
-      if (exp.user_id === currentUser.id) {
-        byCategory[exp.category] = (byCategory[exp.category] || 0) + exp.amount;
+    groupExpenses.forEach((expense) => {
+      if (expense.user_id === currentUser.id) {
+        byCategory[expense.category] = (byCategory[expense.category] || 0) + expense.amount;
       }
     });
 
@@ -101,7 +119,7 @@ export const DashboardFeature: React.FC = () => {
       totalShare: userShareTotal,
       byCategory
     };
-  }, [currentUser]);
+  }, [currentUser, userEventIds]);
 
   const totalPaid = expensesStats?.totalPaid || 0;
   const totalShare = expensesStats?.totalShare || 0;

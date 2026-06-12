@@ -18,6 +18,8 @@ export const GroupsFeature: React.FC = () => {
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [invitedUserId, setInvitedUserId] = useState('');
+  const [inviteError, setInviteError] = useState('');
+  const [groupError, setGroupError] = useState('');
 
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
   const [eventName, setEventName] = useState('');
@@ -76,7 +78,13 @@ export const GroupsFeature: React.FC = () => {
   // Manejo de creación de Grupo
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
+    setGroupError('');
     if (!currentUser || !groupName.trim()) return;
+
+    if (groupName.trim().length < 2) {
+      setGroupError('El nombre del grupo debe tener al menos 2 caracteres.');
+      return;
+    }
 
     const newGroupId = generateUUID();
     const newGroup: Group = {
@@ -108,16 +116,16 @@ export const GroupsFeature: React.FC = () => {
   // Manejo de Invitación de Miembros (Simulada para testing local interactivo)
   const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
+    setInviteError('');
     if (!selectedGroupId || !invitedUserId) return;
 
-    // Verificar si ya es miembro
     const existing = await db.group_members
       .where('[group_id+user_id]')
       .equals([selectedGroupId, invitedUserId])
       .first();
 
     if (existing) {
-      alert('Este usuario ya es miembro de este grupo.');
+      setInviteError('Este usuario ya es miembro de este grupo.');
       return;
     }
 
@@ -146,8 +154,15 @@ export const GroupsFeature: React.FC = () => {
     await addToSyncQueue('notification', newNotificationId, 'INSERT', notification);
 
     setInvitedUserId('');
+    setInviteError('');
     setIsInviteOpen(false);
   };
+
+  const availableInviteUsers = allUsers.filter(
+    (user) =>
+      user.id !== currentUser?.id &&
+      !(groupMembers ?? []).some((member) => member.user.id === user.id)
+  );
 
   // Manejo de creación de Evento
   const handleCreateEvent = async (e: React.FormEvent) => {
@@ -242,6 +257,11 @@ export const GroupsFeature: React.FC = () => {
               value={groupDesc}
               onChange={(e) => setGroupDesc(e.target.value)}
             />
+            {groupError && (
+              <p style={{ color: 'var(--danger)', fontSize: '13px', textAlign: 'center', fontWeight: 500 }}>
+                {groupError}
+              </p>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
               <Button type="button" variant="secondary" onClick={() => setIsCreateGroupOpen(false)}>
                 Cancelar
@@ -390,7 +410,10 @@ export const GroupsFeature: React.FC = () => {
         {/* Modal: Invitar Miembro */}
         <Modal
           isOpen={isInviteOpen}
-          onClose={() => setIsInviteOpen(false)}
+          onClose={() => {
+            setIsInviteOpen(false);
+            setInviteError('');
+          }}
           title="Agregar Miembro al Grupo"
         >
           <form onSubmit={handleInviteMember} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -399,24 +422,42 @@ export const GroupsFeature: React.FC = () => {
               <select
                 className="input-field"
                 value={invitedUserId}
-                onChange={(e) => setInvitedUserId(e.target.value)}
+                onChange={(e) => {
+                  setInvitedUserId(e.target.value);
+                  setInviteError('');
+                }}
                 required
               >
                 <option value="">-- Selecciona un usuario --</option>
-                {allUsers
-                  .filter((u) => u.id !== currentUser?.id)
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.avatar} {u.name} ({u.email})
-                    </option>
-                  ))}
+                {availableInviteUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.avatar} {u.name} ({u.email})
+                  </option>
+                ))}
               </select>
+              {availableInviteUsers.length === 0 && (
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                  No hay más usuarios disponibles para invitar a este grupo.
+                </p>
+              )}
             </div>
+            {inviteError && (
+              <p style={{ color: 'var(--danger)', fontSize: '13px', textAlign: 'center', fontWeight: 500 }}>
+                {inviteError}
+              </p>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
-              <Button type="button" variant="secondary" onClick={() => setIsInviteOpen(false)}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setIsInviteOpen(false);
+                  setInviteError('');
+                }}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" icon={<Mail size={16} />}>
+              <Button type="submit" icon={<Mail size={16} />} disabled={availableInviteUsers.length === 0}>
                 Invitar
               </Button>
             </div>

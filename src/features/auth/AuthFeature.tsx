@@ -1,31 +1,105 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
-import { Card, Button, Input } from '../../components/UI';
-import { LogIn, UserPlus, LogOut } from 'lucide-react';
+import { Card, Button, Input, Badge } from '../../components/UI';
+import { validatePassword, validateRegisterInput } from '../../core/validation';
+import { LogIn, UserPlus, LogOut, FlaskConical } from 'lucide-react';
+
+type AuthTab = 'login' | 'register' | 'demo';
 
 export const AuthFeature: React.FC = () => {
-  const { currentUser, allUsers, login, logout, register, isLoading } = useAuthStore();
-  const [isRegistering, setIsRegistering] = useState(false);
+  const {
+    currentUser,
+    allUsers,
+    authMode,
+    loginWithCredentials,
+    registerWithCredentials,
+    loginDemo,
+    logout,
+    isLoading
+  } = useAuthStore();
+
+  const [activeTab, setActiveTab] = useState<AuthTab>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [avatar, setAvatar] = useState('🐻');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const avatares = ['🐻', '🦊', '🦁', '🐼', '🐨', '🐸', '🐯', '🐙', '🦖', '🦄'];
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const resetForm = () => {
     setError('');
-    if (!name.trim() || !email.trim()) {
-      setError('Por favor, completa todos los campos.');
+    setPassword('');
+    setConfirmPassword('');
+  };
+
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setIsSubmitting(true);
+
+    const passwordValidation = validatePassword({ password });
+    if (!passwordValidation.is_valid) {
+      setError(passwordValidation.error);
+      setIsSubmitting(false);
       return;
     }
+
     try {
-      await register(name.trim(), email.trim(), avatar);
+      await loginWithCredentials(email, password);
+      setEmail('');
+      setPassword('');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message || 'No se pudo iniciar sesión.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRegister = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setIsSubmitting(true);
+
+    const validation = validateRegisterInput({ name, email });
+    if (!validation.is_valid) {
+      setError(validation.error);
+      setIsSubmitting(false);
+      return;
+    }
+
+    const passwordValidation = validatePassword({ password });
+    if (!passwordValidation.is_valid) {
+      setError(passwordValidation.error);
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      await registerWithCredentials(
+        validation.normalized_name,
+        validation.normalized_email,
+        password,
+        avatar
+      );
       setName('');
       setEmail('');
-    } catch (err: any) {
-      setError('Error al registrar usuario: ' + (err.message || err));
+      setPassword('');
+      setConfirmPassword('');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message || 'Error al registrar usuario.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -60,37 +134,44 @@ export const AuthFeature: React.FC = () => {
             <div>
               <h2 style={{ fontSize: '24px', fontWeight: 700 }}>{currentUser.name}</h2>
               <p style={{ color: 'var(--text-secondary)' }}>{currentUser.email}</p>
-            </div>
-            
-            <div style={{ width: '100%', borderTop: '1px solid var(--border-glass)', padding: '16px 0', marginTop: '16px' }}>
-              <h3 style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                Cambiar rápidamente de usuario (Simulación de Dispositivos)
-              </h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
-                {allUsers
-                  .filter((u) => u.id !== currentUser.id)
-                  .map((u) => (
-                    <button
-                      key={u.id}
-                      onClick={() => login(u.id)}
-                      className="list-item"
-                      style={{
-                        padding: '8px 12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        cursor: 'pointer',
-                        background: 'rgba(255,255,255,0.03)',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--border-glass)'
-                      }}
-                    >
-                      <span>{u.avatar}</span>
-                      <span>{u.name}</span>
-                    </button>
-                  ))}
+              <div style={{ marginTop: '10px' }}>
+                <Badge variant={authMode === 'api' ? 'emerald' : 'amber'}>
+                  {authMode === 'api' ? 'Cuenta verificada' : 'Modo demo local'}
+                </Badge>
               </div>
             </div>
+
+            {authMode === 'demo' && (
+              <div style={{ width: '100%', borderTop: '1px solid var(--border-glass)', padding: '16px 0', marginTop: '16px' }}>
+                <h3 style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                  Cambiar rápidamente de usuario (simulación multi-dispositivo)
+                </h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
+                  {allUsers
+                    .filter((user) => user.id !== currentUser.id)
+                    .map((user) => (
+                      <button
+                        key={user.id}
+                        onClick={() => loginDemo(user.id)}
+                        className="list-item"
+                        style={{
+                          padding: '8px 12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          cursor: 'pointer',
+                          background: 'rgba(255,255,255,0.03)',
+                          borderRadius: 'var(--radius-md)',
+                          border: '1px solid var(--border-glass)'
+                        }}
+                      >
+                        <span>{user.avatar}</span>
+                        <span>{user.name}</span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
 
             <Button
               variant="danger"
@@ -107,77 +188,118 @@ export const AuthFeature: React.FC = () => {
           <div style={{ textAlign: 'center' }}>
             <h2 style={{ fontSize: '32px', fontWeight: 800, marginBottom: '8px' }}>Bienvenido a FinSync</h2>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Accede a tus finanzas compartidas y gastos grupales de forma instantánea.
+              Inicia sesión con tu cuenta o usa el modo demo para probar gastos compartidos.
             </p>
           </div>
 
           <Card glass>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginBottom: '24px' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '8px',
+                marginBottom: '24px'
+              }}
+            >
               <Button
-                variant={!isRegistering ? 'primary' : 'secondary'}
-                onClick={() => setIsRegistering(false)}
+                variant={activeTab === 'login' ? 'primary' : 'secondary'}
+                onClick={() => {
+                  setActiveTab('login');
+                  resetForm();
+                }}
                 icon={<LogIn size={16} />}
               >
-                Acceder Demo
+                Entrar
               </Button>
               <Button
-                variant={isRegistering ? 'primary' : 'secondary'}
-                onClick={() => setIsRegistering(true)}
+                variant={activeTab === 'register' ? 'primary' : 'secondary'}
+                onClick={() => {
+                  setActiveTab('register');
+                  resetForm();
+                }}
                 icon={<UserPlus size={16} />}
               >
-                Crear Cuenta
+                Registro
+              </Button>
+              <Button
+                variant={activeTab === 'demo' ? 'primary' : 'secondary'}
+                onClick={() => {
+                  setActiveTab('demo');
+                  resetForm();
+                }}
+                icon={<FlaskConical size={16} />}
+              >
+                Demo
               </Button>
             </div>
 
-            {!isRegistering ? (
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px', textAlign: 'center' }}>
-                  Selecciona un usuario de prueba para ingresar
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {allUsers.map((u) => (
-                    <div
-                      key={u.id}
-                      onClick={() => login(u.id)}
-                      className="list-item"
-                      style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', padding: '12px 16px' }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ fontSize: '24px' }}>{u.avatar}</span>
-                        <div>
-                          <p style={{ fontWeight: 600 }}>{u.name}</p>
-                          <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{u.email}</p>
-                        </div>
-                      </div>
-                      <span style={{ color: 'var(--primary)', fontSize: '13px', fontWeight: 600 }}>Entrar &rarr;</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
+            {activeTab === 'login' && (
+              <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <Input
+                  label="Correo Electrónico"
+                  type="email"
+                  placeholder="ej. ana@correo.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                />
+                <Input
+                  label="Contraseña"
+                  type="password"
+                  placeholder="Mínimo 6 caracteres"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+                {error && <p style={{ color: 'var(--danger)', fontSize: '14px', textAlign: 'center' }}>{error}</p>}
+                <Button type="submit" style={{ width: '100%' }} disabled={isSubmitting}>
+                  {isSubmitting ? 'Ingresando...' : 'Iniciar Sesión'}
+                </Button>
+              </form>
+            )}
+
+            {activeTab === 'register' && (
               <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <Input
                   label="Nombre Completo"
                   placeholder="ej. Ana Gómez"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(event) => setName(event.target.value)}
+                  required
                 />
                 <Input
                   label="Correo Electrónico"
                   type="email"
                   placeholder="ej. ana@correo.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
                 />
-                
+                <Input
+                  label="Contraseña"
+                  type="password"
+                  placeholder="Mínimo 6 caracteres"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+                <Input
+                  label="Confirmar Contraseña"
+                  type="password"
+                  placeholder="Repite tu contraseña"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  required
+                />
+
                 <div className="form-group">
                   <label className="form-label">Elige tu Avatar</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '6px' }}>
-                    {avatares.map((av) => (
+                    {avatares.map((item) => (
                       <button
-                        key={av}
+                        key={item}
                         type="button"
-                        onClick={() => setAvatar(av)}
+                        onClick={() => setAvatar(item)}
                         style={{
                           width: '40px',
                           height: '40px',
@@ -185,14 +307,14 @@ export const AuthFeature: React.FC = () => {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          background: avatar === av ? 'var(--primary-light)' : 'rgba(255,255,255,0.03)',
-                          border: avatar === av ? '2px solid var(--primary)' : '1px solid var(--border-glass)',
+                          background: avatar === item ? 'var(--primary-light)' : 'rgba(255,255,255,0.03)',
+                          border: avatar === item ? '2px solid var(--primary)' : '1px solid var(--border-glass)',
                           borderRadius: '50%',
                           cursor: 'pointer',
                           transition: 'var(--transition-fast)'
                         }}
                       >
-                        {av}
+                        {item}
                       </button>
                     ))}
                   </div>
@@ -200,10 +322,40 @@ export const AuthFeature: React.FC = () => {
 
                 {error && <p style={{ color: 'var(--danger)', fontSize: '14px', textAlign: 'center' }}>{error}</p>}
 
-                <Button type="submit" style={{ width: '100%' }}>
-                  Crear Cuenta y Entrar
+                <Button type="submit" style={{ width: '100%' }} disabled={isSubmitting}>
+                  {isSubmitting ? 'Creando cuenta...' : 'Crear Cuenta'}
                 </Button>
               </form>
+            )}
+
+            {activeTab === 'demo' && (
+              <div>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px', textAlign: 'center' }}>
+                  Modo demo sin contraseña
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '16px' }}>
+                  Ideal para probar divisiones de gastos en local. La sync remota usa almacenamiento simulado.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {allUsers.map((user) => (
+                    <div
+                      key={user.id}
+                      onClick={() => loginDemo(user.id)}
+                      className="list-item"
+                      style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', padding: '12px 16px' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '24px' }}>{user.avatar}</span>
+                        <div>
+                          <p style={{ fontWeight: 600 }}>{user.name}</p>
+                          <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{user.email}</p>
+                        </div>
+                      </div>
+                      <span style={{ color: 'var(--primary)', fontSize: '13px', fontWeight: 600 }}>Entrar →</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </Card>
         </div>

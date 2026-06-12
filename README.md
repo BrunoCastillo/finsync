@@ -47,8 +47,15 @@ Al primer arranque se cargan:
 ## Sincronización
 
 1. Los cambios se guardan en IndexedDB y se encolan localmente.
-2. Si hay conexión, se intenta enviar a `VITE_API_URL/api/sync/push`.
-3. Si la API no responde, se usa fallback en `localStorage` (`FinSync_MockRemoteDB`).
+2. Con cuenta real, el login obtiene un JWT y la sync usa `Authorization: Bearer`.
+3. Si hay conexión, se intenta enviar a `VITE_API_URL/api/sync/push`.
+4. Si la API no responde o estás en modo demo, se usa fallback en `localStorage` (`FinSync_MockRemoteDB`).
+
+## Autenticación
+
+- **Cuenta real:** registro/login con email y contraseña contra la API (`/api/auth/*`).
+- **Modo demo:** acceso local sin contraseña para probar gastos compartidos offline.
+- La sync remota protegida solo funciona con cuenta real autenticada.
 
 ## Estructura
 

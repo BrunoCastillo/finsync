@@ -3,6 +3,7 @@ import { db, type User, type Expense, type ExpenseShare } from '../../core/db';
 import { useAuthStore } from '../../store/authStore';
 import { Button, Input, Modal } from '../../components/UI';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
+import { createAppNotification } from '../../core/notifications/createNotification';
 import { validateAmount } from '../../core/validation';
 import { DollarSign, CheckSquare, Square } from 'lucide-react';
 
@@ -372,17 +373,11 @@ export const ExpensesFeature: React.FC<ExpensesFeatureProps> = ({
           await addToSyncQueue('expense_share', shareId, 'INSERT', newShare);
 
           if (share.user_id !== payerId) {
-            const notificationId = generateUUID();
             const payerUser = members.find((member) => member.user.id === payerId)?.user;
-            const notification = {
-              id: notificationId,
+            await createAppNotification({
               user_id: share.user_id,
-              message: `${payerUser?.name || 'Un miembro'} registró un gasto de $${amount}: "${description}" (Tu parte: $${share.share_amount})`,
-              read: 0,
-              created_at: new Date().toISOString()
-            };
-            await db.notifications.add(notification);
-            await addToSyncQueue('notification', notificationId, 'INSERT', notification);
+              message: `${payerUser?.name || 'Un miembro'} registró un gasto de $${amount}: "${description}" (Tu parte: $${share.share_amount})`
+            });
           }
         }
       }

@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { Card, Button, Input, Modal, Badge } from '../../components/UI';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
+import { createAppNotification } from '../../core/notifications/createNotification';
 import { joinGroupByInviteCode } from '../../core/groups/joinGroup';
 import { deleteEventCascade, deleteGroupCascade, leaveGroupMembership } from '../../core/groups/groupCascade';
 import { buildInviteLink, generateInviteCode } from '../../core/inviteCode';
@@ -199,18 +200,10 @@ export const GroupsFeature: React.FC = () => {
     await db.group_members.add(newMembership);
     await addToSyncQueue('group_member', newMemberId, 'INSERT', newMembership);
 
-    // Encolar una notificación para el usuario invitado
-    const newNotificationId = generateUUID();
-    
-    const notification = {
-      id: newNotificationId,
+    await createAppNotification({
       user_id: invitedUserId,
-      message: `Fuiste agregado al grupo "${activeGroup?.name}"`,
-      read: 0,
-      created_at: new Date().toISOString()
-    };
-    await db.notifications.add(notification);
-    await addToSyncQueue('notification', newNotificationId, 'INSERT', notification);
+      message: `Fuiste agregado al grupo "${activeGroup?.name}"`
+    });
 
     setInvitedUserId('');
     setInviteError('');

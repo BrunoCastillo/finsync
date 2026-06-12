@@ -7,6 +7,7 @@ import { Card, Button, Badge } from '../../components/UI';
 import { ExpensesFeature } from '../expenses/ExpensesFeature';
 import { calculateBalances, calculateOptimalTransfers } from '../settlements/debtCalculator';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
+import { createAppNotification } from '../../core/notifications/createNotification';
 import { deleteEventCascade } from '../../core/groups/groupCascade';
 import { ChevronLeft, Plus, DollarSign, Wallet, RefreshCw, CheckCircle2, Lock, Unlock, CreditCard, Pencil, Trash2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -107,17 +108,10 @@ export const EventDetailFeature: React.FC = () => {
     // Crear notificaciones correspondientes
     const debtorUser = allUsers.find(u => u.id === fromUserId);
 
-    // Notificación para el acreedor
-    const notif1Id = generateUUID();
-    const notif1 = {
-      id: notif1Id,
+    await createAppNotification({
       user_id: toUserId,
-      message: `${debtorUser?.name || 'Un deudor'} te pagó $${amount} para saldar su deuda en "${event?.name}"`,
-      read: 0,
-      created_at: new Date().toISOString()
-    };
-    await db.notifications.add(notif1);
-    await addToSyncQueue('notification', notif1Id, 'INSERT', notif1);
+      message: `${debtorUser?.name || 'Un deudor'} te pagó $${amount} para saldar su deuda en "${event?.name}"`
+    });
   };
 
   const handleToggleEventStatus = async () => {

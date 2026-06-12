@@ -3,6 +3,7 @@ import { joinGroupByCodeApi } from './groupsApi';
 import { isApiAuthEnabled } from '../auth/session';
 import { generateInviteCode, normalizeInviteCode } from '../inviteCode';
 import { addToSyncQueue, generateUUID, triggerSync } from '../sync/syncEngine';
+import { createAppNotification } from '../notifications/createNotification';
 
 const MOCK_REMOTE_KEY = 'FinSync_MockRemoteDB';
 
@@ -106,18 +107,13 @@ export async function joinGroupByInviteCode(params: {
     role: 'member'
   };
 
-  const notification: AppNotification = {
-    id: generateUUID(),
+  const notification = await createAppNotification({
     user_id: params.userId,
-    message: `Te uniste al grupo "${targetGroup.name}" con código de invitación.`,
-    read: 0,
-    created_at: new Date().toISOString()
-  };
+    message: `Te uniste al grupo "${targetGroup.name}" con código de invitación.`
+  });
 
   await db.group_members.add(membership);
-  await db.notifications.add(notification);
   await addToSyncQueue('group_member', membership.id, 'INSERT', membership);
-  await addToSyncQueue('notification', notification.id, 'INSERT', notification);
 
   const mockDb = readMockRemoteDb();
   const mockGroupIndex = mockDb.groups.findIndex((group) => group.id === targetGroup.id);

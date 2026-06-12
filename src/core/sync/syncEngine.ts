@@ -1,7 +1,8 @@
-import { db, type SyncQueueItem } from '../db';
+import { db, type SyncQueueItem, type AppNotification } from '../db';
 import type { Table } from 'dexie';
 import { create } from 'zustand';
 import { getAuthHeaders, isApiAuthEnabled } from '../auth/session';
+import { showBrowserNotification } from '../notifications/pushNotifications';
 
 // Zustand Store for Sync Status
 interface SyncStore {
@@ -235,8 +236,22 @@ async function mergeRemoteTable(
         continue;
       }
 
+      const existing = await table.get(entityId);
       await table.put(row as { id: string });
       mergedCount += 1;
+
+      if (entityType === 'notification' && !existing) {
+        const notification = row as unknown as AppNotification;
+        const currentUserId = localStorage.getItem('FinSync_CurrentUser');
+        if (notification.read === 0 && notification.user_id === currentUserId) {
+          await showBrowserNotification({
+            title: 'FinSync',
+            body: notification.message,
+            tag: notification.id,
+            url: '/'
+          });
+        }
+      }
     }
 
     const localRows = await table.toArray();

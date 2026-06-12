@@ -6,7 +6,8 @@ import { useUiStore } from '../../store/uiStore';
 import { Card, Button, Input, Modal, Badge } from '../../components/UI';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
 import { validateAmount } from '../../core/validation';
-import { getCurrentMonthKey, getMonthlyBudget, saveMonthlyBudget } from '../../core/personal/budget';
+import { getCurrentMonthKey, getMonthlyBudget, getMonthlyExpenseTotal, saveMonthlyBudget } from '../../core/personal/budget';
+import { showBrowserNotification } from '../../core/notifications/pushNotifications';
 import { Plus, Pencil, Trash2, DollarSign, TrendingDown, TrendingUp, Wallet, Target } from 'lucide-react';
 
 const CATEGORIES = ['Alimentación', 'Transporte', 'Vivienda', 'Salud', 'Educación', 'Entretenimiento', 'Viajes', 'Otros'];
@@ -185,6 +186,21 @@ export const PersonalExpensesFeature: React.FC = () => {
         };
         await db.personal_expenses.add(newExpense);
         await addToSyncQueue('personal_expense', newExpense.id, 'INSERT', newExpense);
+      }
+
+      if (type === 'expense') {
+        const budget = await getMonthlyBudget(currentUser.id, monthKey);
+        if (budget && budget.limit_amount > 0) {
+          const totalExpenses = await getMonthlyExpenseTotal(currentUser.id, monthKey);
+          if (totalExpenses > budget.limit_amount) {
+            await showBrowserNotification({
+              title: 'Presupuesto superado',
+              body: `Llevas $${totalExpenses.toFixed(2)} de $${budget.limit_amount.toFixed(2)} este mes.`,
+              tag: `budget-${monthKey}`,
+              url: '/'
+            });
+          }
+        }
       }
 
       handleCloseForm();

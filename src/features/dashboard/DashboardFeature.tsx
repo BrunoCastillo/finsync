@@ -5,9 +5,12 @@ import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { useSyncStore, triggerSync } from '../../core/sync/syncEngine';
 import { Card, Button, Badge } from '../../components/UI';
+import { CategoryDonutChart } from '../../components/CategoryDonutChart';
 import { DEMO_GROUP_ID, DEMO_EVENT_ID } from '../../core/seedDemoData';
 import { getCurrentMonthKey, getMonthlyBudget } from '../../core/personal/budget';
-import { Wifi, WifiOff, RefreshCw, Landmark, ArrowUpRight, ArrowDownLeft, AlertCircle, Plus, Wallet, Target } from 'lucide-react';
+import { getPersonalMonthSummary } from '../../core/personal/personalStats';
+import { PERSONAL_CATEGORY_ICONS } from '../../core/personal/categories';
+import { Wifi, WifiOff, RefreshCw, Landmark, ArrowUpRight, ArrowDownLeft, AlertCircle, Plus, Wallet, Target, TrendingUp, TrendingDown } from 'lucide-react';
 
 export const DashboardFeature: React.FC = () => {
   const { currentUser } = useAuthStore();
@@ -73,17 +76,20 @@ export const DashboardFeature: React.FC = () => {
   }, [currentUser]);
 
   const personalMonthStats = useLiveQuery(async () => {
-    if (!currentUser) return { expenses: 0, income: 0, balance: 0, count: 0 };
-    const rows = await db.personal_expenses.where('user_id').equals(currentUser.id).toArray();
-    const now = new Date();
-    const monthRows = rows.filter((row) => {
-      const date = new Date(row.created_at);
-      return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
-    });
-    const expenses = monthRows.filter((row) => row.type === 'expense').reduce((acc, row) => acc + row.amount, 0);
-    const income = monthRows.filter((row) => row.type === 'income').reduce((acc, row) => acc + row.amount, 0);
-    return { expenses, income, balance: income - expenses, count: monthRows.length };
+    if (!currentUser) {
+      return {
+        expenses: 0,
+        income: 0,
+        balance: 0,
+        count: 0,
+        byCategory: {} as Record<string, number>,
+        recentMovements: []
+      };
+    }
+    return getPersonalMonthSummary(currentUser.id);
   }, [currentUser]);
+
+  const monthKey = getCurrentMonthKey();
 
   const personalBudget = useLiveQuery(async () => {
     if (!currentUser) return undefined;
@@ -132,35 +138,12 @@ export const DashboardFeature: React.FC = () => {
   const netBalance = totalPaid - totalShare;
   const budgetLimit = personalBudget?.limit_amount ?? 0;
   const monthPersonalExpenses = personalMonthStats?.expenses ?? 0;
+  const monthPersonalIncome = personalMonthStats?.income ?? 0;
   const isOverPersonalBudget = budgetLimit > 0 && monthPersonalExpenses > budgetLimit;
-
-  // Preparar datos para el gráfico SVG de Categorías
+  const budgetUsedPct = budgetLimit > 0 ? Math.min((monthPersonalExpenses / budgetLimit) * 100, 999) : 0;
+  const personalCategoryData = personalMonthStats?.byCategory ?? {};
+  const recentPersonalMovements = personalMonthStats?.recentMovements ?? [];
   const categoryData = expensesStats?.byCategory || {};
-  const categoryKeys = Object.keys(categoryData);
-  const totalPaidForCategories = Object.values(categoryData).reduce((a, b) => a + b, 0);
-
-  const categoryColors: Record<string, string> = {
-    Alimentación: '#f43f5e', // Rose
-    Transporte: '#3b82f6', // Blue
-    Vivienda: '#10b981', // Emerald
-    Salud: '#a855f7', // Purple
-    Educación: '#f59e0b', // Amber
-    Entretenimiento: '#ec4899', // Pink
-    Viajes: '#06b6d4', // Cyan
-    Otros: '#64748b' // Slate
-  };
-
-  // Calcular offsets del SVG donut chart
-  let accumulatedAngle = 0;
-  const donutSegments = categoryKeys.map((cat) => {
-    const val = categoryData[cat];
-    const pct = totalPaidForCategories > 0 ? val / totalPaidForCategories : 0;
-    const angle = pct * 360;
-    const color = categoryColors[cat] || '#64748b';
-    const startAngle = accumulatedAngle;
-    accumulatedAngle += angle;
-    return { cat, val, pct, startAngle, angle, color };
-  });
 
   return (
     <div className="animate-fade-in">
@@ -171,7 +154,7 @@ export const DashboardFeature: React.FC = () => {
             Hola, {currentUser?.avatar} {currentUser?.name}
           </h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Este es el resumen general de tu billetera y deudas grupales.
+            Este es el resumen general de tu billetera personal y deudas grupales.
             {' '}
             {(totalGroupsCount ?? 0) > 0 || (totalExpensesCount ?? 0) > 0 || (personalMonthStats?.count ?? 0) > 0
               ? `${totalGroupsCount ?? 0} grupos · ${totalExpensesCount ?? 0} gastos grupales · ${personalMonthStats?.count ?? 0} movimientos personales este mes.`
@@ -241,6 +224,26 @@ export const DashboardFeature: React.FC = () => {
       {/* Grid de Métricas Principales */}
       <div className="grid-3 mb-24">
         <Card style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--danger-light)', color: 'var(--danger)' }}>
+            <TrendingDown size={24} />
+          </div>
+          <div>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Gastos personales (mes)</p>
+            <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--danger)' }}>${monthPersonalExpenses.toFixed(2)}</p>
+          </div>
+        </Card>
+
+        <Card style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--secondary-light)', color: 'var(--secondary)' }}>
+            <TrendingUp size={24} />
+          </div>
+          <div>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Ingresos personales (mes)</p>
+            <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--secondary)' }}>${monthPersonalIncome.toFixed(2)}</p>
+          </div>
+        </Card>
+
+        <Card style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ padding: '12px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--primary-light)', color: 'var(--primary)' }}>
             <Wallet size={24} />
           </div>
@@ -307,82 +310,104 @@ export const DashboardFeature: React.FC = () => {
       </div>
 
       <div className="dashboard-grid">
-        {/* Columna Izquierda: Gráfico de Categorías y Acciones Rápidas */}
+        {/* Columna Izquierda: Finanzas personales y gastos grupales */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Gráfico SVG Donut */}
           <Card style={{ padding: '24px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px' }}>Mis Gastos por Categoría (Aportes)</h2>
-
-            {totalPaidForCategories === 0 ? (
-              <div style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
-                <p>No hay gastos registrados para generar gráficos.</p>
-                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Ingresa a uno de tus grupos, abre un evento y registra tu primer gasto.
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 700 }}>Finanzas personales · {monthKey}</h2>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Gastos e ingresos del mes actual.
                 </p>
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-around', gap: '24px' }}>
-                {/* SVG Donut */}
-                <div style={{ position: 'relative', width: '200px', height: '200px' }}>
-                  <svg width="200" height="200" viewBox="0 0 200 200">
-                    <circle cx="100" cy="100" r="80" fill="none" stroke="var(--bg-surface)" strokeWidth="24" />
-                    {donutSegments.map((seg, idx) => {
-                      // Usar stroke-dasharray y stroke-dashoffset para renderizar el donut
-                      const radius = 70;
-                      const circumference = 2 * Math.PI * radius;
-                      const strokeDasharray = `${(seg.pct * circumference).toFixed(2)} ${circumference}`;
-                      const strokeDashoffset = `${(- (seg.startAngle / 360) * circumference).toFixed(2)}`;
-                      
-                      return (
-                        <circle
-                          key={idx}
-                          cx="100"
-                          cy="100"
-                          r={radius}
-                          fill="none"
-                          stroke={seg.color}
-                          strokeWidth="20"
-                          strokeDasharray={strokeDasharray}
-                          strokeDashoffset={strokeDashoffset}
-                          transform="rotate(-90 100 100)"
-                          style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-                        />
-                      );
-                    })}
-                  </svg>
+              <Button variant="secondary" onClick={() => setView('personal')} icon={<Wallet size={14} />} style={{ padding: '8px 12px', fontSize: '12px' }}>
+                Ver todos
+              </Button>
+            </div>
+
+            {budgetLimit > 0 && (
+              <div style={{ marginBottom: '20px', padding: '14px', borderRadius: 'var(--radius-md)', backgroundColor: 'rgba(124,58,237,0.06)', border: '1px solid var(--border-glass)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '8px' }}>
+                  <span>Presupuesto mensual</span>
+                  <span>
+                    ${monthPersonalExpenses.toFixed(2)} / ${budgetLimit.toFixed(2)}
+                  </span>
+                </div>
+                <div style={{ height: '8px', borderRadius: '999px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                   <div
                     style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      textAlign: 'center',
-                      width: '100px'
+                      height: '100%',
+                      width: `${Math.min(budgetUsedPct, 100)}%`,
+                      borderRadius: '999px',
+                      background: isOverPersonalBudget ? 'var(--danger)' : budgetUsedPct > 80 ? 'var(--warning)' : 'var(--secondary)'
                     }}
-                  >
-                    <p style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>APORTES</p>
-                    <p style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                      ${totalPaidForCategories.toFixed(0)}
-                    </p>
-                  </div>
+                  />
                 </div>
+              </div>
+            )}
 
-                {/* Leyenda */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, minWidth: '180px' }}>
-                  {donutSegments.map((seg, idx) => (
-                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: seg.color, display: 'inline-block' }} />
-                        <span style={{ color: 'var(--text-secondary)' }}>{seg.cat}</span>
+            <CategoryDonutChart
+              title="Gastos por categoría"
+              centerLabel="GASTOS"
+              categoryData={personalCategoryData}
+              emptyMessage="No hay gastos personales este mes."
+              emptyHint="Registra un gasto personal para ver el desglose por categoría."
+            />
+
+            {recentPersonalMovements.length > 0 && (
+              <div style={{ marginTop: '24px', borderTop: '1px solid var(--border-glass)', paddingTop: '20px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>Últimos movimientos</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {recentPersonalMovements.map((movement) => (
+                    <div
+                      key={movement.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '10px 12px',
+                        borderRadius: 'var(--radius-md)',
+                        backgroundColor: 'rgba(255,255,255,0.02)',
+                        border: '1px solid var(--border-glass)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                        <span style={{ fontSize: '18px' }}>{PERSONAL_CATEGORY_ICONS[movement.category] ?? '💰'}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontSize: '13px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {movement.description}
+                          </p>
+                          <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            {movement.category} · {new Date(movement.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
                       </div>
-                      <span style={{ fontWeight: 600 }}>
-                        ${seg.val.toFixed(2)} ({(seg.pct * 100).toFixed(0)}%)
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          fontWeight: 700,
+                          color: movement.type === 'income' ? 'var(--secondary)' : 'var(--danger)',
+                          flexShrink: 0
+                        }}
+                      >
+                        {movement.type === 'income' ? '+' : '-'}${movement.amount.toFixed(2)}
                       </span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+          </Card>
+
+          <Card style={{ padding: '24px' }}>
+            <CategoryDonutChart
+              title="Gastos grupales por categoría (aportes)"
+              centerLabel="APORTES"
+              categoryData={categoryData}
+              emptyMessage="No hay gastos grupales registrados."
+              emptyHint="Ingresa a uno de tus grupos, abre un evento y registra tu primer gasto."
+            />
           </Card>
 
           {/* Acciones Rápidas */}

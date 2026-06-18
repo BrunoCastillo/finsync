@@ -2,20 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { Card, Button, Input, Badge } from '../../components/UI';
 import { validatePassword, validateRegisterInput, validateLoginInput, validateProfileName } from '../../core/validation';
-import { LogIn, UserPlus, LogOut, FlaskConical, KeyRound, Save } from 'lucide-react';
+import { LogIn, UserPlus, LogOut, KeyRound, Save } from 'lucide-react';
 
-type AuthTab = 'login' | 'register' | 'demo';
+type AuthTab = 'login' | 'register';
 
 export const AuthFeature: React.FC = () => {
   const {
     currentUser,
-    allUsers,
-    authMode,
     loginWithCredentials,
     registerWithCredentials,
     updateProfile,
     changePassword,
-    loginDemo,
     logout,
     isLoading
   } = useAuthStore();
@@ -225,144 +222,106 @@ export const AuthFeature: React.FC = () => {
               <h2 style={{ fontSize: '24px', fontWeight: 700 }}>{currentUser.name}</h2>
               <p style={{ color: 'var(--text-secondary)' }}>{currentUser.email}</p>
               <div style={{ marginTop: '10px' }}>
-                <Badge variant={authMode === 'api' ? 'emerald' : 'amber'}>
-                  {authMode === 'api' ? 'Cuenta verificada' : 'Modo demo local'}
-                </Badge>
+                <Badge variant="emerald">Cuenta verificada</Badge>
               </div>
             </div>
 
-            {authMode === 'api' && (
-              <>
-                <form
-                  onSubmit={handleSaveProfile}
-                  style={{
-                    width: '100%',
-                    borderTop: '1px solid var(--border-glass)',
-                    paddingTop: '20px',
-                    marginTop: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '14px',
-                    textAlign: 'left'
-                  }}
-                >
-                  <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Editar perfil</h3>
-                  <Input
-                    label="Nombre"
-                    value={profileName}
-                    onChange={(event) => setProfileName(event.target.value)}
-                    required
-                  />
-                  <div className="form-group">
-                    <label className="form-label">Avatar</label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '6px' }}>
-                      {avatares.map((item) => (
-                        <button
-                          key={item}
-                          type="button"
-                          onClick={() => setProfileAvatar(item)}
-                          style={{
-                            width: '40px',
-                            height: '40px',
-                            fontSize: '20px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: profileAvatar === item ? 'var(--primary-light)' : 'rgba(255,255,255,0.03)',
-                            border: profileAvatar === item ? '2px solid var(--primary)' : '1px solid var(--border-glass)',
-                            borderRadius: '50%',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {item}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {profileError && <p style={{ color: 'var(--danger)', fontSize: '13px' }}>{profileError}</p>}
-                  {profileMessage && <p style={{ color: 'var(--secondary)', fontSize: '13px' }}>{profileMessage}</p>}
-                  <Button type="submit" icon={<Save size={16} />} disabled={isSavingProfile}>
-                    {isSavingProfile ? 'Guardando...' : 'Guardar perfil'}
-                  </Button>
-                </form>
-
-                <form
-                  onSubmit={handleChangePassword}
-                  style={{
-                    width: '100%',
-                    borderTop: '1px solid var(--border-glass)',
-                    paddingTop: '20px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '14px',
-                    textAlign: 'left'
-                  }}
-                >
-                  <h3 style={{ fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <KeyRound size={16} />
-                    Cambiar contraseña
-                  </h3>
-                  <Input
-                    label="Contraseña actual"
-                    type="password"
-                    value={currentPassword}
-                    onChange={(event) => setCurrentPassword(event.target.value)}
-                    required
-                  />
-                  <Input
-                    label="Nueva contraseña"
-                    type="password"
-                    value={newPassword}
-                    onChange={(event) => setNewPassword(event.target.value)}
-                    required
-                  />
-                  <Input
-                    label="Confirmar nueva contraseña"
-                    type="password"
-                    value={confirmNewPassword}
-                    onChange={(event) => setConfirmNewPassword(event.target.value)}
-                    required
-                  />
-                  {passwordError && <p style={{ color: 'var(--danger)', fontSize: '13px' }}>{passwordError}</p>}
-                  {passwordMessage && <p style={{ color: 'var(--secondary)', fontSize: '13px' }}>{passwordMessage}</p>}
-                  <Button type="submit" variant="secondary" disabled={isSavingPassword}>
-                    {isSavingPassword ? 'Actualizando...' : 'Actualizar contraseña'}
-                  </Button>
-                </form>
-              </>
-            )}
-
-            {authMode === 'demo' && (
-              <div style={{ width: '100%', borderTop: '1px solid var(--border-glass)', padding: '16px 0', marginTop: '16px' }}>
-                <h3 style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                  Cambiar rápidamente de usuario (simulación multi-dispositivo)
-                </h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
-                  {allUsers
-                    .filter((user) => user.id !== currentUser.id)
-                    .map((user) => (
-                      <button
-                        key={user.id}
-                        onClick={() => loginDemo(user.id)}
-                        className="list-item"
-                        style={{
-                          padding: '8px 12px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          cursor: 'pointer',
-                          background: 'rgba(255,255,255,0.03)',
-                          borderRadius: 'var(--radius-md)',
-                          border: '1px solid var(--border-glass)'
-                        }}
-                      >
-                        <span>{user.avatar}</span>
-                        <span>{user.name}</span>
-                      </button>
-                    ))}
+            <form
+              onSubmit={handleSaveProfile}
+              style={{
+                width: '100%',
+                borderTop: '1px solid var(--border-glass)',
+                paddingTop: '20px',
+                marginTop: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                textAlign: 'left'
+              }}
+            >
+              <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Editar perfil</h3>
+              <Input
+                label="Nombre"
+                value={profileName}
+                onChange={(event) => setProfileName(event.target.value)}
+                required
+              />
+              <div className="form-group">
+                <label className="form-label">Avatar</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '6px' }}>
+                  {avatares.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setProfileAvatar(item)}
+                      style={{
+                        width: '40px',
+                        height: '40px',
+                        fontSize: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: profileAvatar === item ? 'var(--primary-light)' : 'rgba(255,255,255,0.03)',
+                        border: profileAvatar === item ? '2px solid var(--primary)' : '1px solid var(--border-glass)',
+                        borderRadius: '50%',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {item}
+                    </button>
+                  ))}
                 </div>
               </div>
-            )}
+              {profileError && <p style={{ color: 'var(--danger)', fontSize: '13px' }}>{profileError}</p>}
+              {profileMessage && <p style={{ color: 'var(--secondary)', fontSize: '13px' }}>{profileMessage}</p>}
+              <Button type="submit" icon={<Save size={16} />} disabled={isSavingProfile}>
+                {isSavingProfile ? 'Guardando...' : 'Guardar perfil'}
+              </Button>
+            </form>
+
+            <form
+              onSubmit={handleChangePassword}
+              style={{
+                width: '100%',
+                borderTop: '1px solid var(--border-glass)',
+                paddingTop: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                textAlign: 'left'
+              }}
+            >
+              <h3 style={{ fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <KeyRound size={16} />
+                Cambiar contraseña
+              </h3>
+              <Input
+                label="Contraseña actual"
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                required
+              />
+              <Input
+                label="Nueva contraseña"
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                required
+              />
+              <Input
+                label="Confirmar nueva contraseña"
+                type="password"
+                value={confirmNewPassword}
+                onChange={(event) => setConfirmNewPassword(event.target.value)}
+                required
+              />
+              {passwordError && <p style={{ color: 'var(--danger)', fontSize: '13px' }}>{passwordError}</p>}
+              {passwordMessage && <p style={{ color: 'var(--secondary)', fontSize: '13px' }}>{passwordMessage}</p>}
+              <Button type="submit" variant="secondary" disabled={isSavingPassword}>
+                {isSavingPassword ? 'Actualizando...' : 'Actualizar contraseña'}
+              </Button>
+            </form>
 
             <Button
               variant="danger"
@@ -379,7 +338,7 @@ export const AuthFeature: React.FC = () => {
           <div style={{ textAlign: 'center' }}>
             <h2 style={{ fontSize: '32px', fontWeight: 800, marginBottom: '8px' }}>Bienvenido a FinSync</h2>
             <p style={{ color: 'var(--text-secondary)' }}>
-              Inicia sesión con tu cuenta o usa el modo demo para probar gastos compartidos.
+              Inicia sesión o crea una cuenta para gestionar tus finanzas personales y gastos compartidos.
             </p>
           </div>
 
@@ -387,7 +346,7 @@ export const AuthFeature: React.FC = () => {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
+                gridTemplateColumns: 'repeat(2, 1fr)',
                 gap: '8px',
                 marginBottom: '24px'
               }}
@@ -411,16 +370,6 @@ export const AuthFeature: React.FC = () => {
                 icon={<UserPlus size={16} />}
               >
                 Registro
-              </Button>
-              <Button
-                variant={activeTab === 'demo' ? 'primary' : 'secondary'}
-                onClick={() => {
-                  setActiveTab('demo');
-                  resetForm();
-                }}
-                icon={<FlaskConical size={16} />}
-              >
-                Demo
               </Button>
             </div>
 
@@ -517,36 +466,6 @@ export const AuthFeature: React.FC = () => {
                   {isSubmitting ? 'Creando cuenta...' : 'Crear Cuenta'}
                 </Button>
               </form>
-            )}
-
-            {activeTab === 'demo' && (
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px', textAlign: 'center' }}>
-                  Modo demo sin contraseña
-                </h3>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'center', marginBottom: '16px' }}>
-                  Ideal para probar divisiones de gastos en local. La sync remota usa almacenamiento simulado.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {allUsers.map((user) => (
-                    <div
-                      key={user.id}
-                      onClick={() => loginDemo(user.id)}
-                      className="list-item"
-                      style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', padding: '12px 16px' }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ fontSize: '24px' }}>{user.avatar}</span>
-                        <div>
-                          <p style={{ fontWeight: 600 }}>{user.name}</p>
-                          <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{user.email}</p>
-                        </div>
-                      </div>
-                      <span style={{ color: 'var(--primary)', fontSize: '13px', fontWeight: 600 }}>Entrar →</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
             )}
           </Card>
         </div>

@@ -27,7 +27,7 @@ const App: React.FC = () => {
       .count();
   }, [currentUser]);
 
-  // Inicializar autenticación y datos demo al montar la aplicación
+  // Inicializar autenticación al montar la aplicación
   useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);

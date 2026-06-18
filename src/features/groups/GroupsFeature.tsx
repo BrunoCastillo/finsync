@@ -5,14 +5,13 @@ import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { Card, Button, Input, Modal, Badge } from '../../components/UI';
 import { addToSyncQueue, generateUUID } from '../../core/sync/syncEngine';
-import { createAppNotification } from '../../core/notifications/createNotification';
 import { joinGroupByInviteCode } from '../../core/groups/joinGroup';
 import { deleteEventCascade, deleteGroupCascade, leaveGroupMembership } from '../../core/groups/groupCascade';
 import { buildInviteLink, generateInviteCode } from '../../core/inviteCode';
-import { FolderKanban, Users, CalendarPlus, ChevronLeft, Plus, Mail, Link2, Copy, UserPlus, Trash2, LogOut } from 'lucide-react';
+import { FolderKanban, CalendarPlus, ChevronLeft, Plus, Link2, Copy, UserPlus, Trash2, LogOut } from 'lucide-react';
 
 export const GroupsFeature: React.FC = () => {
-  const { currentUser, allUsers } = useAuthStore();
+  const { currentUser } = useAuthStore();
   const { activeView, selectedGroupId, setView, pendingJoinCode, setPendingJoinCode } = useUiStore();
 
   // Modales
@@ -26,9 +25,6 @@ export const GroupsFeature: React.FC = () => {
   const [groupName, setGroupName] = useState('');
   const [groupDesc, setGroupDesc] = useState('');
 
-  const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const [invitedUserId, setInvitedUserId] = useState('');
-  const [inviteError, setInviteError] = useState('');
   const [groupError, setGroupError] = useState('');
 
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
@@ -173,49 +169,7 @@ export const GroupsFeature: React.FC = () => {
     setIsCreateGroupOpen(false);
   };
 
-  // Manejo de Invitación de Miembros (Simulada para testing local interactivo)
-  const handleInviteMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setInviteError('');
-    if (!selectedGroupId || !invitedUserId) return;
-
-    const existing = await db.group_members
-      .where('[group_id+user_id]')
-      .equals([selectedGroupId, invitedUserId])
-      .first();
-
-    if (existing) {
-      setInviteError('Este usuario ya es miembro de este grupo.');
-      return;
-    }
-
-    const newMemberId = generateUUID();
-    const newMembership: GroupMember = {
-      id: newMemberId,
-      group_id: selectedGroupId,
-      user_id: invitedUserId,
-      role: 'member'
-    };
-
-    await db.group_members.add(newMembership);
-    await addToSyncQueue('group_member', newMemberId, 'INSERT', newMembership);
-
-    await createAppNotification({
-      user_id: invitedUserId,
-      message: `Fuiste agregado al grupo "${activeGroup?.name}"`
-    });
-
-    setInvitedUserId('');
-    setInviteError('');
-    setIsInviteOpen(false);
-  };
-
-  const availableInviteUsers = allUsers.filter(
-    (user) =>
-      user.id !== currentUser?.id &&
-      !(groupMembers ?? []).some((member) => member.user.id === user.id)
-  );
-
+  // Unirse a un grupo con código de invitación
   const handleJoinGroup = async (event: React.FormEvent) => {
     event.preventDefault();
     setJoinError('');
@@ -449,9 +403,6 @@ export const GroupsFeature: React.FC = () => {
             <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>{activeGroup.description}</p>
           </div>
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <Button variant="secondary" onClick={() => setIsInviteOpen(true)} icon={<Users size={16} />}>
-              Invitar Miembro
-            </Button>
             <Button onClick={() => setIsCreateEventOpen(true)} icon={<CalendarPlus size={16} />}>
               Nuevo Evento
             </Button>
@@ -604,77 +555,9 @@ export const GroupsFeature: React.FC = () => {
                   </div>
                 ))}
               </div>
-              <Button
-                variant="secondary"
-                onClick={() => setIsInviteOpen(true)}
-                style={{ width: '100%', marginTop: '16px' }}
-                icon={<Users size={16} />}
-              >
-                Agregar Miembro
-              </Button>
             </Card>
           </div>
         </div>
-
-        {/* Modal: Invitar Miembro */}
-        <Modal
-          isOpen={isInviteOpen}
-          onClose={() => {
-            setIsInviteOpen(false);
-            setInviteError('');
-          }}
-          title="Agregar Miembro al Grupo"
-        >
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-            En producción usa el código de invitación. En demo puedes agregar usuarios locales directamente.
-          </p>
-          <form onSubmit={handleInviteMember} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="form-group">
-              <label className="form-label">Seleccionar Usuario</label>
-              <select
-                className="input-field"
-                value={invitedUserId}
-                onChange={(e) => {
-                  setInvitedUserId(e.target.value);
-                  setInviteError('');
-                }}
-                required
-              >
-                <option value="">-- Selecciona un usuario --</option>
-                {availableInviteUsers.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.avatar} {u.name} ({u.email})
-                  </option>
-                ))}
-              </select>
-              {availableInviteUsers.length === 0 && (
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                  No hay más usuarios disponibles para invitar a este grupo.
-                </p>
-              )}
-            </div>
-            {inviteError && (
-              <p style={{ color: 'var(--danger)', fontSize: '13px', textAlign: 'center', fontWeight: 500 }}>
-                {inviteError}
-              </p>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setIsInviteOpen(false);
-                  setInviteError('');
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" icon={<Mail size={16} />} disabled={availableInviteUsers.length === 0}>
-                Invitar
-              </Button>
-            </div>
-          </form>
-        </Modal>
 
         {/* Modal: Crear Evento */}
         <Modal

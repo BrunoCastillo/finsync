@@ -6,7 +6,6 @@ import { useUiStore } from '../../store/uiStore';
 import { useSyncStore, triggerSync } from '../../core/sync/syncEngine';
 import { Card, Button, Badge } from '../../components/UI';
 import { CategoryDonutChart } from '../../components/CategoryDonutChart';
-import { DEMO_GROUP_ID, DEMO_EVENT_ID } from '../../core/seedDemoData';
 import { getCurrentMonthKey, getMonthlyBudget } from '../../core/personal/budget';
 import { getPersonalMonthSummary } from '../../core/personal/personalStats';
 import { PERSONAL_CATEGORY_ICONS } from '../../core/personal/categories';
@@ -18,17 +17,6 @@ export const DashboardFeature: React.FC = () => {
 
   const handleRegisterGroupExpense = async () => {
     if (!currentUser) return;
-
-    const demoEvent = await db.events.get(DEMO_EVENT_ID);
-    const demoMembership = await db.group_members
-      .where('[group_id+user_id]')
-      .equals([DEMO_GROUP_ID, currentUser.id])
-      .first();
-
-    if (demoEvent?.status === 'open' && demoMembership) {
-      setView('event-detail', DEMO_GROUP_ID, DEMO_EVENT_ID, true);
-      return;
-    }
 
     const memberships = await db.group_members.where('user_id').equals(currentUser.id).toArray();
     for (const membership of memberships) {
@@ -421,7 +409,7 @@ export const DashboardFeature: React.FC = () => {
                 Gestionar Grupos
               </Button>
               <Button variant="secondary" onClick={() => setView('profile')} icon={<Landmark size={16} />}>
-                Perfil & Demo
+                Mi Perfil
               </Button>
               <Button variant="secondary" onClick={() => setView('notifications')} icon={<Landmark size={16} />}>
                 Ver Notificaciones

@@ -23,3 +23,7 @@ services:
         fromDatabase:
           name: finsync-db
           property: connectionString
+      - key: FRONTEND_URL
+        value: https://finsync-tau.vercel.app
+      - key: EMAIL_VERIFICATION_DEV_MODE
+        value: "true"

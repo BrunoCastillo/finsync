@@ -14,7 +14,7 @@ import { Badge } from './components/UI';
 import { LayoutDashboard, Users, Bell, User, Wallet } from 'lucide-react';
 
 const App: React.FC = () => {
-  const { currentUser, initializeAuth, isLoading } = useAuthStore();
+  const { currentUser, initializeAuth, verifyEmail, isLoading } = useAuthStore();
   const { activeView, setView, setPendingJoinCode } = useUiStore();
   const { isOnline, pendingCount } = useSyncStore();
 
@@ -56,6 +56,21 @@ const App: React.FC = () => {
     setPendingJoinCode(pendingJoinCode);
     setView('groups');
   }, [currentUser, setPendingJoinCode, setView]);
+
+  // Verificar correo si la URL trae ?verify=TOKEN
+  useEffect(() => {
+    if (isLoading) return;
+    const verifyToken = new URLSearchParams(window.location.search).get('verify');
+    if (!verifyToken) return;
+
+    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+    window.history.replaceState({}, '', cleanUrl);
+
+    verifyEmail(verifyToken).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      window.alert(message || 'No se pudo verificar el correo.');
+    });
+  }, [isLoading, verifyEmail]);
 
   if (isLoading) {
     return (

@@ -6,6 +6,7 @@ export interface User {
   name: string;
   avatar: string;
   created_at: string;
+  email_verified?: boolean;
 }
 
 export interface Group {

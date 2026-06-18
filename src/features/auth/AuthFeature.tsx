@@ -2,15 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { Card, Button, Input, Badge } from '../../components/UI';
 import { validatePassword, validateRegisterInput, validateLoginInput, validateProfileName } from '../../core/validation';
-import { LogIn, UserPlus, LogOut, KeyRound, Save } from 'lucide-react';
+import { LogIn, UserPlus, LogOut, KeyRound, Save, MailCheck, RefreshCw } from 'lucide-react';
 
 type AuthTab = 'login' | 'register';
 
 export const AuthFeature: React.FC = () => {
   const {
     currentUser,
+    pendingVerification,
     loginWithCredentials,
     registerWithCredentials,
+    resendVerification,
+    clearPendingVerification,
     updateProfile,
     changePassword,
     logout,
@@ -36,6 +39,9 @@ export const AuthFeature: React.FC = () => {
   const [passwordMessage, setPasswordMessage] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
+  const [isResending, setIsResending] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
 
   const avatares = ['🐻', '🦊', '🦁', '🐼', '🐨', '🐸', '🐯', '🐙', '🦖', '🦄'];
 
@@ -74,6 +80,7 @@ export const AuthFeature: React.FC = () => {
       await loginWithCredentials(emailValidation.normalized_email, password);
       setEmail('');
       setPassword('');
+      setUnverifiedEmail('');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       const loginHint =
@@ -81,6 +88,9 @@ export const AuthFeature: React.FC = () => {
           ? ' Si te registraste antes, es posible que la cuenta se haya perdido en un despliegue anterior: prueba registrarte de nuevo con el mismo correo.'
           : '';
       setError((message || 'No se pudo iniciar sesión.') + loginHint);
+      if (message.includes('verificar tu correo')) {
+        setUnverifiedEmail(emailValidation.normalized_email);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -112,16 +122,22 @@ export const AuthFeature: React.FC = () => {
     }
 
     try {
-      await registerWithCredentials(
+      const pending = await registerWithCredentials(
         validation.normalized_name,
         validation.normalized_email,
         password,
         avatar
       );
       setName('');
-      setEmail('');
       setPassword('');
       setConfirmPassword('');
+      if (pending) {
+        setEmail(pending.email);
+        setActiveTab('login');
+        setError('');
+      } else {
+        setEmail('');
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message || 'Error al registrar usuario.');
@@ -187,6 +203,23 @@ export const AuthFeature: React.FC = () => {
       setPasswordError(message || 'No se pudo cambiar la contraseña.');
     } finally {
       setIsSavingPassword(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    const targetEmail = pendingVerification?.email || unverifiedEmail || email;
+    if (!targetEmail) return;
+
+    setIsResending(true);
+    setResendMessage('');
+    try {
+      const message = await resendVerification(targetEmail);
+      setResendMessage(message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setResendMessage(message || 'No se pudo reenviar el correo.');
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -343,6 +376,57 @@ export const AuthFeature: React.FC = () => {
           </div>
 
           <Card glass>
+            {pendingVerification && (
+              <div
+                style={{
+                  marginBottom: '20px',
+                  padding: '16px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid rgba(16,185,129,0.25)',
+                  backgroundColor: 'rgba(16,185,129,0.08)'
+                }}
+              >
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                  <MailCheck size={20} style={{ color: 'var(--secondary)', marginTop: '2px' }} />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontWeight: 700, marginBottom: '6px' }}>Verifica tu correo</p>
+                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{pendingVerification.message}</p>
+                    <p style={{ fontSize: '13px', marginTop: '8px' }}>
+                      Correo: <strong>{pendingVerification.email}</strong>
+                    </p>
+                    {pendingVerification.debugLink && (
+                      <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', wordBreak: 'break-all' }}>
+                        Enlace de desarrollo: {pendingVerification.debugLink}
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={handleResendVerification}
+                        disabled={isResending}
+                        icon={<RefreshCw size={14} />}
+                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                      >
+                        {isResending ? 'Reenviando...' : 'Reenviar correo'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={clearPendingVerification}
+                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                      >
+                        Entendido
+                      </Button>
+                    </div>
+                    {resendMessage && (
+                      <p style={{ fontSize: '12px', color: 'var(--secondary)', marginTop: '8px' }}>{resendMessage}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div
               style={{
                 display: 'grid',
@@ -392,6 +476,21 @@ export const AuthFeature: React.FC = () => {
                   required
                 />
                 {error && <p style={{ color: 'var(--danger)', fontSize: '14px', textAlign: 'center' }}>{error}</p>}
+                {unverifiedEmail && error.includes('verificar') && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleResendVerification}
+                    disabled={isResending}
+                    icon={<RefreshCw size={14} />}
+                    style={{ width: '100%' }}
+                  >
+                    {isResending ? 'Reenviando enlace...' : 'Reenviar verificación'}
+                  </Button>
+                )}
+                {resendMessage && unverifiedEmail && (
+                  <p style={{ color: 'var(--secondary)', fontSize: '13px', textAlign: 'center' }}>{resendMessage}</p>
+                )}
                 <Button type="submit" style={{ width: '100%' }} disabled={isSubmitting}>
                   {isSubmitting ? 'Ingresando...' : 'Iniciar Sesión'}
                 </Button>

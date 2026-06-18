@@ -52,9 +52,21 @@ def init_database() -> None:
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 user_id TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                email_verified BOOLEAN NOT NULL DEFAULT TRUE,
+                verification_token_hash TEXT,
+                verification_expires_at TEXT
             )
             """
+        )
+        cursor.execute(
+            "ALTER TABLE auth_accounts ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE"
+        )
+        cursor.execute(
+            "ALTER TABLE auth_accounts ADD COLUMN IF NOT EXISTS verification_token_hash TEXT"
+        )
+        cursor.execute(
+            "ALTER TABLE auth_accounts ADD COLUMN IF NOT EXISTS verification_expires_at TEXT"
         )
         cursor.execute(
             """
@@ -71,20 +83,89 @@ def init_database() -> None:
 def load_auth_accounts_from_db() -> list[dict[str, Any]]:
     with get_cursor() as cursor:
         cursor.execute(
-            "SELECT id, email, password_hash, user_id, created_at FROM auth_accounts ORDER BY created_at"
+            """
+            SELECT
+                id,
+                email,
+                password_hash,
+                user_id,
+                created_at,
+                email_verified,
+                verification_token_hash,
+                verification_expires_at
+            FROM auth_accounts
+            ORDER BY created_at
+            """
         )
-        return [dict(row) for row in cursor.fetchall()]
+        rows = []
+        for row in cursor.fetchall():
+            account = dict(row)
+            if account.get("email_verified") is None:
+                account["email_verified"] = True
+            rows.append(account)
+        return rows
 
 
 def insert_auth_account(account: dict[str, Any]) -> None:
     with get_cursor() as cursor:
         cursor.execute(
             """
-            INSERT INTO auth_accounts (id, email, password_hash, user_id, created_at)
-            VALUES (%(id)s, %(email)s, %(password_hash)s, %(user_id)s, %(created_at)s)
+            INSERT INTO auth_accounts (
+                id,
+                email,
+                password_hash,
+                user_id,
+                created_at,
+                email_verified,
+                verification_token_hash,
+                verification_expires_at
+            )
+            VALUES (
+                %(id)s,
+                %(email)s,
+                %(password_hash)s,
+                %(user_id)s,
+                %(created_at)s,
+                %(email_verified)s,
+                %(verification_token_hash)s,
+                %(verification_expires_at)s
+            )
             """,
             account,
         )
+
+
+def update_auth_account_fields(email: str, fields: dict[str, Any]) -> None:
+    assignments = ", ".join(f"{key} = %({key})s" for key in fields)
+    payload = {"email": email, **fields}
+    with get_cursor() as cursor:
+        cursor.execute(
+            f"UPDATE auth_accounts SET {assignments} WHERE email = %(email)s",
+            payload,
+        )
+
+
+def find_auth_account_by_verification_hash(token_hash: str) -> dict[str, Any] | None:
+    with get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                id,
+                email,
+                password_hash,
+                user_id,
+                created_at,
+                email_verified,
+                verification_token_hash,
+                verification_expires_at
+            FROM auth_accounts
+            WHERE verification_token_hash = %s
+            LIMIT 1
+            """,
+            (token_hash,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
 
 def update_password_hash_in_db(email: str, password_hash: str) -> None:

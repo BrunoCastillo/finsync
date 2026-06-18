@@ -3,11 +3,24 @@ import { getAccessToken, getAuthHeaders } from './session';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
-export interface AuthResponse {
+export interface AuthSessionResponse {
   access_token: string;
   token_type: string;
+  expires_in: number;
+  expires_at: string;
+  email_verified: boolean;
   user: User;
 }
+
+export interface RegisterPendingVerificationResponse {
+  requires_verification: true;
+  email: string;
+  message: string;
+  delivery_mode?: string;
+  debug_link?: string;
+}
+
+export type RegisterApiResponse = AuthSessionResponse | RegisterPendingVerificationResponse;
 
 interface AuthApiError {
   detail?: string | { msg?: string }[];
@@ -26,7 +39,7 @@ async function parseAuthError(response: Response): Promise<string> {
   return `Error del servidor (${response.status}).`;
 }
 
-async function postAuth(path: string, body: Record<string, string>): Promise<AuthResponse> {
+async function postAuthJson<T>(path: string, body: Record<string, string>): Promise<T> {
   const response = await fetch(`${API_BASE}/api/auth/${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -37,7 +50,7 @@ async function postAuth(path: string, body: Record<string, string>): Promise<Aut
     throw new Error(await parseAuthError(response));
   }
 
-  return response.json() as Promise<AuthResponse>;
+  return response.json() as Promise<T>;
 }
 
 export async function registerWithApi(params: {
@@ -45,8 +58,8 @@ export async function registerWithApi(params: {
   email: string;
   password: string;
   avatar: string;
-}): Promise<AuthResponse> {
-  return postAuth('register', {
+}): Promise<RegisterApiResponse> {
+  return postAuthJson('register', {
     name: params.name,
     email: params.email,
     password: params.password,
@@ -57,11 +70,39 @@ export async function registerWithApi(params: {
 export async function loginWithApi(params: {
   email: string;
   password: string;
-}): Promise<AuthResponse> {
-  return postAuth('login', {
+}): Promise<AuthSessionResponse> {
+  return postAuthJson('login', {
     email: params.email,
     password: params.password
   });
+}
+
+export async function verifyEmailWithApi(token: string): Promise<AuthSessionResponse> {
+  return postAuthJson('verify-email', { token });
+}
+
+export async function resendVerificationWithApi(email: string): Promise<{
+  ok: boolean;
+  message: string;
+  debug_link?: string;
+}> {
+  return postAuthJson('resend-verification', { email });
+}
+
+export async function refreshSessionWithApi(): Promise<AuthSessionResponse> {
+  const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseAuthError(response));
+  }
+
+  return response.json() as Promise<AuthSessionResponse>;
 }
 
 export async function fetchCurrentUserFromApi(): Promise<User | null> {
@@ -124,4 +165,10 @@ export async function changePasswordWithApi(params: {
       new_password: params.new_password
     }
   });
+}
+
+export function isRegisterPendingVerification(
+  response: RegisterApiResponse
+): response is RegisterPendingVerificationResponse {
+  return 'requires_verification' in response && response.requires_verification === true;
 }
